@@ -8,6 +8,7 @@ import {
 import { numberToWordsIndian } from './number-to-words';
 import { PdfService } from './pdf.service';
 import { ExcelService } from './excel.service';
+import { CLIENTS } from './clients';
 
 @Component({
   selector: 'app-root',
@@ -28,13 +29,14 @@ import { ExcelService } from './excel.service';
       <!-- ==================== FORM ==================== -->
       <div class="form-pane">
 
-      <section class="card">
+        <section class="card">
           <h2>Copies</h2>
           <label class="checkbox-row">
             <input type="checkbox" [(ngModel)]="inv.bothCopies" (ngModelChange)="onChange()">
             <span>Print both ORIGINAL & DUPLICATE (uncheck for ORIGINAL only)</span>
           </label>
         </section>
+
         <section class="card">
           <h2>Invoice details</h2>
           <div class="grid g2">
@@ -59,11 +61,17 @@ import { ExcelService } from './excel.service';
 
         <section class="card">
           <h2>Bill to (customer)</h2>
-          <div class="grid g2">
-            <label>Name <input [(ngModel)]="inv.customer.name" (ngModelChange)="onChange()"></label>
-            <label>GST No <input [(ngModel)]="inv.customer.gstNo" (ngModelChange)="onChange()"></label>
-            <label>Address line 1 <input [(ngModel)]="inv.customer.addressLine1" (ngModelChange)="onChange()"></label>
-            <label>Address line 2 <input [(ngModel)]="inv.customer.addressLine2" (ngModelChange)="onChange()"></label>
+          <label class="full">Select client
+            <select [(ngModel)]="selectedClient" (ngModelChange)="onClientSelect($event)">
+              <option value="">— Manual entry —</option>
+              <option *ngFor="let cl of clients" [value]="cl.name">{{ cl.name }}</option>
+            </select>
+          </label>
+          <div class="grid g2" style="margin-top:10px">
+            <label>Name <input [(ngModel)]="inv.customer.name" (ngModelChange)="onCustomerEdit()"></label>
+            <label>GST No <input [ngModel]="inv.customer.gstNo || ''" (ngModelChange)="inv.customer.gstNo = $event; onCustomerEdit()"></label>
+            <label>Address line 1 <input [(ngModel)]="inv.customer.addressLine1" (ngModelChange)="onCustomerEdit()"></label>
+            <label>Address line 2 <input [(ngModel)]="inv.customer.addressLine2" (ngModelChange)="onCustomerEdit()"></label>
           </div>
         </section>
 
@@ -244,16 +252,12 @@ import { ExcelService } from './excel.service';
       /* preview goes below the form, fixed comfortable height, not sticky */
       .preview-pane { position: static; height: 70vh; margin-top: 4px; }
     }
-  `]})
+  `]
+})
 export class AppComponent {
   inv: Invoice = {
     company: { ...DEFAULT_COMPANY },
-    customer: {
-      name: 'M/S.VEEWIN LOGISTICS',
-      addressLine1: 'NO.3, BLOCK B, FIRST FLOOR GOPAL STREET',
-      addressLine2: 'CHENNAI-600001',
-      gstNo: '33AMHPS3708E1Z7'
-    },
+    customer: { ...CLIENTS[0] },
     invoiceNo: '3045',
     date: this.today(),
     vehicles: [
@@ -270,11 +274,12 @@ export class AppComponent {
     amountInWords: '',
     digitalSignature: true,
     signatoryName: 'A.N.MISHRA',
-        bothCopies: true
-
+    bothCopies: true
   };
 
   previewSrc: SafeResourceUrl | null = null;
+  clients = CLIENTS;
+  selectedClient = '';
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -283,11 +288,32 @@ export class AppComponent {
     private sanitizer: DomSanitizer
   ) {
     this.updateWords();
+    this.selectedClient = CLIENTS[0].name;
     this.refreshPreview();
   }
 
   get totalDisplay(): string {
     return formatAmount(invoiceTotal(this.inv));
+  }
+
+  /** When a client is picked from the dropdown, fill the customer fields. */
+  onClientSelect(name: string): void {
+    const cl = this.clients.find(c => c.name === name);
+    if (cl) {
+      this.inv.customer = { ...cl };
+    }
+    this.onChange();
+  }
+
+  /** Manual edits to the customer fields switch the dropdown back to manual entry. */
+  onCustomerEdit(): void {
+    const match = this.clients.find(c =>
+      c.name === this.inv.customer.name &&
+      c.gstNo === this.inv.customer.gstNo &&
+      c.addressLine1 === this.inv.customer.addressLine1 &&
+      c.addressLine2 === this.inv.customer.addressLine2);
+    this.selectedClient = match ? match.name : '';
+    this.onChange();
   }
 
   onChange(): void {

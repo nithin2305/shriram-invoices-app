@@ -134,14 +134,22 @@ generate(inv: Invoice): void {
     const splitX = M + 119;            // vertical divider
     doc.rect(M, btTop, W, btH);
     doc.line(splitX, btTop, splitX, btTop + btH);
-
-    doc.setFont('times', 'bold'); doc.setFontSize(11.5);
-    let by = btTop + 7;
-    doc.text(inv.customer.name, M + 3, by); by += 7;
-    if (inv.customer.addressLine1) { doc.text(inv.customer.addressLine1, M + 3, by); by += 7; }
-    if (inv.customer.addressLine2) { doc.text(inv.customer.addressLine2, M + 3, by); by += 7; }
-    doc.text(`GST NO: ${inv.customer.gstNo}`, M + 3, by);
-
+  doc.setFont('times', 'bold'); doc.setFontSize(11.5);
+    const custWidth = splitX - M - 6;     // text must stay left of the divider
+    const custRaw: string[] = [inv.customer.name, inv.customer.addressLine1, inv.customer.addressLine2]
+      .filter(t => t && String(t).trim());
+    if (inv.customer.gstNo) { custRaw.push(`GST NO: ${inv.customer.gstNo}`); }
+    const custLines: string[] = [];
+    custRaw.forEach(t => { (doc.splitTextToSize(String(t), custWidth) as string[]).forEach(l => custLines.push(l)); });
+    let custFont = 11.5;
+    const topPad = 6.5, botPad = 3;
+    let lh = (btH - topPad - botPad) / Math.max(1, custLines.length);
+    if (lh > 7) { lh = 7; }
+    if (lh < 4.4) { custFont = 10; lh = (btH - topPad - botPad) / Math.max(1, custLines.length); }
+    if (lh < 3.8) { custFont = 9;  lh = (btH - topPad - botPad) / Math.max(1, custLines.length); }
+    doc.setFontSize(custFont);
+    let by = btTop + topPad;
+    custLines.forEach(line => { doc.text(line, M + 3, by); by += lh; });
     // right side: invoice no box (top) and date box
     const invNoBoxH = 17;
     doc.line(splitX, btTop + invNoBoxH, R, btTop + invNoBoxH);
