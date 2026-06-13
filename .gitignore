@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# Angular temporary and build artifacts
+.angular/
+/dist
+/out-tsc
+
+# IDE and editor files
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime files
+.DS_Store
+Thumbs.db
+
+# Compiled TypeScript
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*

@@ -1,0 +1,288 @@
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import {
+  Invoice, DEFAULT_COMPANY, DEFAULT_GST_NOTE, invoiceTotal, formatAmount
+} from './invoice.model';
+import { numberToWordsIndian } from './number-to-words';
+import { PdfService } from './pdf.service';
+import { ExcelService } from './excel.service';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+  <div class="page">
+    <header class="topbar">
+      <h1>{{ inv.company.name }} — Invoice Generator</h1>
+      <div class="actions">
+        <button class="btn ghost" (click)="refreshPreview()">Refresh preview</button>
+        <button class="btn" (click)="downloadPdf()">Download PDF</button>
+        <button class="btn" (click)="downloadExcel()">Download Excel</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- ==================== FORM ==================== -->
+      <div class="form-pane">
+
+        <section class="card">
+          <h2>Invoice details</h2>
+          <div class="grid g2">
+            <label>Invoice No <input [(ngModel)]="inv.invoiceNo" (ngModelChange)="onChange()"></label>
+            <label>Date (dd.mm.yyyy) <input [(ngModel)]="inv.date" (ngModelChange)="onChange()"></label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Vehicles</h2>
+          <div class="row-line" *ngFor="let v of inv.vehicles; let i = index">
+            <label>Vehicle No <input [(ngModel)]="v.vehicleNo" (ngModelChange)="onChange()"></label>
+            <label>Vehicle Type
+              <select [(ngModel)]="v.vehicleType" (ngModelChange)="onChange()">
+                <option>FTL</option><option>LTL</option><option>PTL</option><option>ODC</option>
+              </select>
+            </label>
+            <button class="btn small danger" (click)="removeVehicle(i)" [disabled]="inv.vehicles.length === 1">×</button>
+          </div>
+          <button class="btn add small" (click)="addVehicle()">+ Add vehicle</button>
+        </section>
+
+        <section class="card">
+          <h2>Bill to (customer)</h2>
+          <div class="grid g2">
+            <label>Name <input [(ngModel)]="inv.customer.name" (ngModelChange)="onChange()"></label>
+            <label>GST No <input [(ngModel)]="inv.customer.gstNo" (ngModelChange)="onChange()"></label>
+            <label>Address line 1 <input [(ngModel)]="inv.customer.addressLine1" (ngModelChange)="onChange()"></label>
+            <label>Address line 2 <input [(ngModel)]="inv.customer.addressLine2" (ngModelChange)="onChange()"></label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>L.R. details</h2>
+          <table class="lr-table">
+            <thead>
+              <tr><th>L.R. No</th><th>Date</th><th>From</th><th>To</th><th>Description</th><th>Pkgs</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of inv.lrRows; let i = index">
+                <td><input [(ngModel)]="row.lrNo" (ngModelChange)="onChange()"></td>
+                <td><input [(ngModel)]="row.date" (ngModelChange)="onChange()"></td>
+                <td><input [(ngModel)]="row.from" (ngModelChange)="onChange()"></td>
+                <td><input [(ngModel)]="row.to" (ngModelChange)="onChange()"></td>
+                <td><input [(ngModel)]="row.description" (ngModelChange)="onChange()"></td>
+                <td><input [(ngModel)]="row.pkgs" (ngModelChange)="onChange()" placeholder="ROLL 12"></td>
+                <td><button class="btn small danger" (click)="removeLr(i)" [disabled]="inv.lrRows.length === 1">×</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <button class="btn add small" (click)="addLr()">+ Add L.R. row</button>
+        </section>
+
+        <section class="card">
+          <h2>Charges</h2>
+          <div class="row-line" *ngFor="let ch of inv.charges; let i = index">
+            <label>{{ i === 0 ? 'Main charge label' : 'Charge label' }}
+              <input [(ngModel)]="ch.label" (ngModelChange)="onChange()">
+            </label>
+            <label>Amount
+              <input type="number" [(ngModel)]="ch.amount" (ngModelChange)="onChange()">
+            </label>
+            <button class="btn small danger" (click)="removeCharge(i)" [disabled]="inv.charges.length === 1">×</button>
+          </div>
+          <button class="btn add small" (click)="addCharge()">+ Add charge</button>
+          <div class="grid g1" style="margin-top:10px">
+            <label>Total <input [value]="totalDisplay" readonly class="readonly"></label>
+          </div>
+          <label class="full">GST note
+            <input [(ngModel)]="inv.gstNote" (ngModelChange)="onChange()">
+          </label>
+          <label class="full">Amount in words (auto)
+            <input [(ngModel)]="inv.amountInWords">
+          </label>
+        </section>
+
+        <details class="card">
+          <summary><h2 class="inline">Company details (edit if needed)</h2></summary>
+          <div class="grid g2">
+            <label>Name <input [(ngModel)]="inv.company.name" (ngModelChange)="onChange()"></label>
+            <label>Address <input [(ngModel)]="inv.company.address" (ngModelChange)="onChange()"></label>
+            <label>Contact <input [(ngModel)]="inv.company.contact" (ngModelChange)="onChange()"></label>
+            <label>E-mail <input [(ngModel)]="inv.company.email" (ngModelChange)="onChange()"></label>
+            <label>State <input [(ngModel)]="inv.company.state" (ngModelChange)="onChange()"></label>
+            <label>GSTIN <input [(ngModel)]="inv.company.gstin" (ngModelChange)="onChange()"></label>
+            <label>PAN <input [(ngModel)]="inv.company.pan" (ngModelChange)="onChange()"></label>
+            <label>Jurisdiction <input [(ngModel)]="inv.company.jurisdiction" (ngModelChange)="onChange()"></label>
+            <label>Bank name <input [(ngModel)]="inv.company.bankName" (ngModelChange)="onChange()"></label>
+            <label>A/C No <input [(ngModel)]="inv.company.accountNo" (ngModelChange)="onChange()"></label>
+            <label>Branch <input [(ngModel)]="inv.company.branch" (ngModelChange)="onChange()"></label>
+            <label>IFSC <input [(ngModel)]="inv.company.ifsc" (ngModelChange)="onChange()"></label>
+          </div>
+        </details>
+      </div>
+
+      <!-- ==================== PREVIEW ==================== -->
+      <div class="preview-pane">
+        <iframe *ngIf="previewSrc" [src]="previewSrc" title="Invoice preview"></iframe>
+      </div>
+    </div>
+  </div>
+  `,
+  styles: [`
+    :host { display: block; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .page { min-height: 100vh; background: #eef1f4; }
+    .topbar { display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 20px; background: #1a2b49; color: #fff; position: sticky; top: 0; z-index: 5; }
+    .topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
+    .actions { display: flex; gap: 8px; }
+    .btn { background: #d9a40b; color: #1a2b49; border: none; padding: 8px 16px;
+      border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); }
+    .btn.small { padding: 4px 10px; font-size: 12px; }
+    .btn.add { background: #fff; color: #1a2b49; border: 1.5px dashed #1a2b49;
+      margin-top: 4px; }
+    .btn.add:hover { background: #1a2b49; color: #fff; }
+    .btn.danger { background: #c0392b; color: #fff; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .layout { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
+      gap: 16px; padding: 16px 20px; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+    .card { background: #fff; border-radius: 6px; padding: 14px 16px; margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+      color: #1a2b49; margin: 0 0 10px; }
+    .card h2.inline { display: inline; }
+    details.card summary { cursor: pointer; }
+
+    .grid { display: grid; gap: 10px; }
+    .g2 { grid-template-columns: 1fr 1fr; }
+    .g3 { grid-template-columns: 1fr 1fr 1fr; }
+    .g4 { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 700px) { .g3, .g4 { grid-template-columns: 1fr 1fr; } }
+
+    label { display: flex; flex-direction: column; font-size: 12px; color: #45556b; gap: 3px; }
+    label.full { margin-top: 10px; }
+    input, select { padding: 7px 9px; border: 1px solid #c8d0da; border-radius: 4px;
+      font-size: 13px; font-family: inherit; }
+    input:focus, select:focus { outline: 2px solid #1a2b49; outline-offset: -1px; }
+    input.readonly { background: #f1f4f7; font-weight: 700; }
+
+    .row-line { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;
+      align-items: end; margin-bottom: 8px; }
+    .g1 { grid-template-columns: 1fr; }
+    .lr-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    .lr-table th { font-size: 11px; text-align: left; color: #45556b; padding: 2px 4px; }
+    .lr-table td { padding: 2px 4px; }
+    .lr-table input { width: 100%; box-sizing: border-box; }
+
+    .preview-pane { position: sticky; top: 64px; height: calc(100vh - 80px); }
+    .preview-pane iframe { width: 100%; height: 100%; border: 1px solid #c8d0da;
+      border-radius: 6px; background: #fff; }
+  `]
+})
+export class AppComponent {
+  inv: Invoice = {
+    company: { ...DEFAULT_COMPANY },
+    customer: {
+      name: 'M/S.VEEWIN LOGISTICS',
+      addressLine1: 'NO.3, BLOCK B, FIRST FLOOR GOPAL STREET',
+      addressLine2: 'CHENNAI-600001',
+      gstNo: '33AMHPS3708E1Z7'
+    },
+    invoiceNo: '3045',
+    date: this.today(),
+    vehicles: [
+      { vehicleNo: 'TN 19 BU 3984', vehicleType: 'FTL' }
+    ],
+    charges: [
+      { label: 'Transportation Charges', amount: 8500 },
+      { label: 'UNLOADING CHARGES', amount: 120 }
+    ],
+    lrRows: [
+      { lrNo: '3193', date: '02.06.2026', from: 'CHENNAI', to: 'NELAMANGALA', description: 'FABRICS', pkgs: 'ROLL\n12' }
+    ],
+    gstNote: DEFAULT_GST_NOTE,
+    amountInWords: ''
+  };
+
+  previewSrc: SafeResourceUrl | null = null;
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private pdf: PdfService,
+    private excel: ExcelService,
+    private sanitizer: DomSanitizer
+  ) {
+    this.updateWords();
+    this.refreshPreview();
+  }
+
+  get totalDisplay(): string {
+    return formatAmount(invoiceTotal(this.inv));
+  }
+
+  onChange(): void {
+    this.updateWords();
+    // debounce preview regeneration
+    if (this.previewTimer) { clearTimeout(this.previewTimer); }
+    this.previewTimer = setTimeout(() => this.refreshPreview(), 600);
+  }
+
+  updateWords(): void {
+    this.inv.amountInWords = numberToWordsIndian(invoiceTotal(this.inv));
+  }
+
+  refreshPreview(): void {
+    const url = this.pdf.previewUrl(this.inv);
+    this.previewSrc = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  }
+
+  addLr(): void {
+    this.inv.lrRows.push({ lrNo: '', date: '', from: '', to: '', description: '', pkgs: '' });
+    this.onChange();
+  }
+
+  removeLr(i: number): void {
+    this.inv.lrRows.splice(i, 1);
+    this.onChange();
+  }
+
+  addVehicle(): void {
+    this.inv.vehicles.push({ vehicleNo: '', vehicleType: 'FTL' });
+    this.onChange();
+  }
+
+  removeVehicle(i: number): void {
+    this.inv.vehicles.splice(i, 1);
+    this.onChange();
+  }
+
+  addCharge(): void {
+    this.inv.charges.push({ label: '', amount: 0 });
+    this.onChange();
+  }
+
+  removeCharge(i: number): void {
+    this.inv.charges.splice(i, 1);
+    this.onChange();
+  }
+
+  downloadPdf(): void {
+    this.pdf.generate(this.inv);
+  }
+
+  async downloadExcel(): Promise<void> {
+    await this.excel.generate(this.inv);
+  }
+
+  private today(): string {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
+  }
+}
