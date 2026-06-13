@@ -28,6 +28,13 @@ import { ExcelService } from './excel.service';
       <!-- ==================== FORM ==================== -->
       <div class="form-pane">
 
+      <section class="card">
+          <h2>Copies</h2>
+          <label class="checkbox-row">
+            <input type="checkbox" [(ngModel)]="inv.bothCopies" (ngModelChange)="onChange()">
+            <span>Print both ORIGINAL & DUPLICATE (uncheck for ORIGINAL only)</span>
+          </label>
+        </section>
         <section class="card">
           <h2>Invoice details</h2>
           <div class="grid g2">
@@ -104,6 +111,17 @@ import { ExcelService } from './excel.service';
           </label>
         </section>
 
+        <section class="card">
+          <h2>Signature</h2>
+          <label class="checkbox-row">
+            <input type="checkbox" [(ngModel)]="inv.digitalSignature" (ngModelChange)="onChange()">
+            <span>Add digital signature</span>
+          </label>
+          <label class="full" *ngIf="inv.digitalSignature">Signatory name
+            <input [(ngModel)]="inv.signatoryName" (ngModelChange)="onChange()">
+          </label>
+        </section>
+
         <details class="card">
           <summary><h2 class="inline">Company details (edit if needed)</h2></summary>
           <div class="grid g2">
@@ -175,6 +193,9 @@ import { ExcelService } from './excel.service';
     .row-line { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;
       align-items: end; margin-bottom: 8px; }
     .g1 { grid-template-columns: 1fr; }
+    .checkbox-row { flex-direction: row; align-items: center; gap: 8px; font-size: 14px;
+      color: #1a2b49; cursor: pointer; }
+    .checkbox-row input { width: 18px; height: 18px; cursor: pointer; }
     .lr-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
     .lr-table th { font-size: 11px; text-align: left; color: #45556b; padding: 2px 4px; }
     .lr-table td { padding: 2px 4px; }
@@ -207,7 +228,11 @@ export class AppComponent {
       { lrNo: '3193', date: '02.06.2026', from: 'CHENNAI', to: 'NELAMANGALA', description: 'FABRICS', pkgs: 'ROLL\n12' }
     ],
     gstNote: DEFAULT_GST_NOTE,
-    amountInWords: ''
+    amountInWords: '',
+    digitalSignature: true,
+    signatoryName: 'A.N.MISHRA',
+        bothCopies: true
+
   };
 
   previewSrc: SafeResourceUrl | null = null;

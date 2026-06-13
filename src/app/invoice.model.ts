@@ -49,6 +49,9 @@ export interface Invoice {
   lrRows: LrRow[];
   gstNote: string;
   amountInWords: string; // auto-generated, editable
+  digitalSignature: boolean;
+  signatoryName: string;
+  bothCopies: boolean;   // true = ORIGINAL + DUPLICATE, false = ORIGINAL only
 }
 
 export const DEFAULT_COMPANY: CompanyDetails = {

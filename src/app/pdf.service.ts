@@ -4,23 +4,59 @@ import { Invoice, LrRow, formatAmount, invoiceTotal } from './invoice.model';
 
 @Injectable({ providedIn: 'root' })
 export class PdfService {
-
-  /** Generates the two-page PDF (DUPLICATE COPY + ORIGINAL COPY) and triggers download. */
-  generate(inv: Invoice): void {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    this.drawPage(doc, inv, 'DUPLICATE COPY');
-    doc.addPage();
-    this.drawPage(doc, inv, 'ORIGINAL COPY');
+generate(inv: Invoice): void {
+    const doc = this.build(inv);
     doc.save(`Invoice_${inv.invoiceNo}.pdf`);
   }
 
-  /** Returns a blob URL for live preview in an <iframe>. */
   previewUrl(inv: Invoice): string {
+    return this.build(inv).output('bloburl').toString();
+  }
+
+  private build(inv: Invoice): jsPDF {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    this.drawPage(doc, inv, 'DUPLICATE COPY');
-    doc.addPage();
-    this.drawPage(doc, inv, 'ORIGINAL COPY');
-    return doc.output('bloburl').toString();
+    if (inv.bothCopies) {
+      this.drawPage(doc, inv, 'ORIGINAL COPY');
+      doc.addPage();
+      this.drawPage(doc, inv, 'DUPLICATE COPY');
+    } else {
+      this.drawPage(doc, inv, 'ORIGINAL COPY');
+    }
+    return doc;
+  }
+
+  private drawSignature(doc: jsPDF, cx: number, baseY: number, scale = 0.6): void {
+    const s = scale;
+    doc.setDrawColor(15, 35, 85);
+    doc.setLineCap('round');
+    doc.setLineJoin('round');
+    const rel = (x0: number, y0: number, segs: number[][], lw: number): void => { doc.setLineWidth(lw * s); doc.lines(segs, x0, y0, [1, 1], 'S', false); };
+
+    const ax = cx - 26 * s, ay = baseY;
+    rel(ax - 4 * s, ay + 1 * s, [[2 * s, -3 * s, 5 * s, -9 * s, 8 * s, -13 * s]], 0.6);
+    rel(ax + 4 * s, ay - 13 * s, [[-1 * s, 5 * s, -2 * s, 9 * s, -3 * s, 13 * s]], 0.7);
+    rel(ax + 4 * s, ay - 13 * s, [[2 * s, 5 * s, 3 * s, 9 * s, 5 * s, 13 * s]], 0.7);
+    rel(ax + 1 * s, ay - 5 * s, [[2 * s, -0.8 * s, 5 * s, 0.4 * s, 7 * s, -0.4 * s]], 0.5);
+
+    const bx = cx - 13 * s, by = baseY - 4 * s;
+    rel(bx, by, [
+      [2 * s, -2 * s, 4 * s, 3 * s, 6 * s, -1 * s],
+      [1.5 * s, 3 * s, 3 * s, -5 * s, 5 * s, 1 * s],
+      [2.5 * s, 2 * s, 5 * s, -4 * s, 7 * s, 0 * s],
+      [2 * s, 2.5 * s, 4.5 * s, -5 * s, 7 * s, -0.5 * s],
+      [2 * s, 2 * s, 5 * s, -4 * s, 8 * s, 0.5 * s],
+      [2 * s, 1.5 * s, 5 * s, -3 * s, 9 * s, 0 * s]
+    ], 0.55);
+
+    doc.setLineWidth(0.7 * s);
+    doc.lines([
+      [-8 * s, 2.5 * s, -30 * s, 4 * s, -46 * s, -0.5 * s],
+      [-3 * s, -2.5 * s, 2 * s, -2 * s, 6 * s, 1.5 * s]
+    ], cx + 30 * s, baseY + 5 * s, [1, 1], 'S', false);
+
+    doc.setLineWidth(0.2);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineCap('butt');
   }
 
   private drawPage(doc: jsPDF, inv: Invoice, copyLabel: string): void {
@@ -43,7 +79,7 @@ export class PdfService {
 
     // company name - centered, bold, underlined
     doc.setFont('times', 'bold'); doc.setFontSize(20);
-    const nameY = y + 12;
+    const nameY = y + 10;
     doc.text(c.name, M + W / 2, nameY, { align: 'center' });
     const nameW = doc.getTextWidth(c.name);
     doc.setLineWidth(0.6);
@@ -52,14 +88,14 @@ export class PdfService {
 
     // address
     doc.setFont('times', 'normal'); doc.setFontSize(13.5);
-    doc.text(c.address, M + W / 2, nameY + 9, { align: 'center' });
+    doc.text(c.address, M + W / 2, nameY + 8, { align: 'center' });
 
     // contact / email
     doc.setFontSize(12);
-    doc.text(`Contact No : ${c.contact}     E-Mail : ${c.email}`, M + W / 2, nameY + 16.5, { align: 'center' });
+    doc.text(`Contact No : ${c.contact}     E-Mail : ${c.email}`, M + W / 2, nameY + 14.5, { align: 'center' });
 
     // state / gstin / pan
-    const stateY = nameY + 23.5;
+    const stateY = nameY + 20.5;
     doc.setFontSize(12);
     const parts = [
       { label: 'State:', value: ` ${c.state}  ` },
@@ -81,11 +117,11 @@ export class PdfService {
     doc.rect(M, headerTop, W, headerBottom - headerTop);
 
     // ---------- INVOICE TITLE BAR ----------
-    const titleTop = headerBottom + 4;
-    const titleH = 12;
+    const titleTop = headerBottom;
+    const titleH = 10;
     doc.rect(M, titleTop, W, titleH);
     doc.setFont('times', 'bold'); doc.setFontSize(16);
-    const tY = titleTop + 7.8;
+    const tY = titleTop + 6.8;
     doc.text('INVOICE', M + W / 2, tY, { align: 'center' });
     const tW = doc.getTextWidth('INVOICE');
     doc.setLineWidth(0.6);
@@ -93,28 +129,28 @@ export class PdfService {
     doc.setLineWidth(0.4);
 
     // ---------- BILL-TO / INVOICE NO / DATE ----------
-    const btTop = titleTop + titleH + 4;
-    const btH = 44;
+    const btTop = titleTop + titleH;
+    const btH = 34;
     const splitX = M + 119;            // vertical divider
     doc.rect(M, btTop, W, btH);
     doc.line(splitX, btTop, splitX, btTop + btH);
 
     doc.setFont('times', 'bold'); doc.setFontSize(11.5);
-    let by = btTop + 8;
-    doc.text(inv.customer.name, M + 3, by); by += 9;
-    if (inv.customer.addressLine1) { doc.text(inv.customer.addressLine1, M + 3, by); by += 9; }
-    if (inv.customer.addressLine2) { doc.text(inv.customer.addressLine2, M + 3, by); by += 9; }
+    let by = btTop + 7;
+    doc.text(inv.customer.name, M + 3, by); by += 7;
+    if (inv.customer.addressLine1) { doc.text(inv.customer.addressLine1, M + 3, by); by += 7; }
+    if (inv.customer.addressLine2) { doc.text(inv.customer.addressLine2, M + 3, by); by += 7; }
     doc.text(`GST NO: ${inv.customer.gstNo}`, M + 3, by);
 
     // right side: invoice no box (top) and date box
-    const invNoBoxH = 20;
+    const invNoBoxH = 17;
     doc.line(splitX, btTop + invNoBoxH, R, btTop + invNoBoxH);
     doc.setFontSize(11.5);
-    doc.text(`INVOICE  NO : ${inv.invoiceNo}`, splitX + 3, btTop + 8);
-    doc.text(`DATE : ${inv.date}`, splitX + 3, btTop + invNoBoxH + 8);
+    doc.text(`INVOICE  NO : ${inv.invoiceNo}`, splitX + 3, btTop + 7);
+    doc.text(`DATE : ${inv.date}`, splitX + 3, btTop + invNoBoxH + 7);
 
     // ---------- MAIN TABLE ----------
-    const thTop = btTop + btH + 4;
+    const thTop = btTop + btH;
     const thH = 9;
     const snoX = M + 14;               // S.NO column right edge
     const amtX = R - 28;               // Amount column left edge
@@ -126,10 +162,17 @@ export class PdfService {
     doc.text('DESCRIPTION OF GOODS/SERVICES', snoX + (amtX - snoX) / 2, thTop + 5.4, { align: 'center' });
     doc.text('Amount', amtX + (R - amtX) / 2, thTop + 5.4, { align: 'center' });
 
-    // body
+    // body — height is whatever remains between the table header and the fixed footer,
+    // so the footer + bottom line always land at the same place on the A4 page.
+    const PAGE_H = 297;
+    const fH = 80;                 // footer block height (fits the signature)
+    const bottomLineGap = 6;       // space for E.&O.E line below footer
+    const pageBottomMargin = 4;
+    const fTop = PAGE_H - pageBottomMargin - bottomLineGap - fH;
+    const totH = 9;
     const bodyTop = thTop + thH;
-    const bodyH = 76;
-    const bodyBottom = bodyTop + bodyH;
+    const bodyBottom = fTop - totH;          // total row sits directly above footer
+    const bodyH = bodyBottom - bodyTop;
     doc.rect(M, bodyTop, W, bodyH);
     doc.line(snoX, bodyTop, snoX, bodyBottom);
     doc.line(amtX, bodyTop, amtX, bodyBottom);
@@ -171,10 +214,11 @@ export class PdfService {
       { key: 'pkgs',        label: 'Pkgs',                  cx: snoX + 130 }
     ];
     const colWOf = (k: keyof LrRow): number => k === 'description' ? 40 : (k === 'to' || k === 'from' ? 32 : 22);
-const pkgsStack = (v: unknown): string => String(v ?? '').trim().split(/\s+/).filter(Boolean).join('\n');
-const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgsStack(row[key]) : String(row[key] ?? '');
+
     // measure: lines per LR row at base font 10
     doc.setFont('times', 'bold'); doc.setFontSize(10);
+    const pkgsStack = (v: unknown): string => String(v ?? '').trim().split(/\s+/).filter(Boolean).join('\n');
+    const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgsStack(row[key]) : String(row[key] ?? '');
     const rowLines = inv.lrRows.map(row => {
       let maxLines = 1;
       lrCols.forEach(col => {
@@ -187,18 +231,43 @@ const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgs
     });
 
     const extras = inv.charges.slice(1).filter(ch => ch.label && Number(ch.amount) !== 0);
-    const lrHeaderH = 8;          // LR header line + gap
-    const gstReserve = 9;         // space kept for GST note at body bottom
-    const avail = bodyH - r1H - lrHeaderH - gstReserve - 4;
+    const lrHeaderH = 7;          // LR header line + gap
+    const gstReserve = 8;         // space kept for GST note at body bottom
+    const avail = bodyH - r1H - lrHeaderH - gstReserve - 2;
 
-    // base units
-    let lineH = 4.5, rowGap = 4.5, chargeH = 7, lrFont = 10;
-    const needed = rowLines.reduce((a, n) => a + n * lineH + rowGap, 0) + extras.length * chargeH + 4;
-    if (needed > avail) {
-      const k = Math.max(0.55, avail / needed);
-      lineH *= k; rowGap *= k; chargeH = Math.max(4.5, chargeH * k);
+    // total number of text lines we must place (LR rows are multi-line via pkgs/wrap)
+    const totalLRLines = rowLines.reduce((a, n) => a + n, 0);
+    const nRows = inv.lrRows.length;
+    const nExtra = extras.length;
+
+    // Ideal (comfortable) metrics
+    let lineH = 4.5;     // height of one text line within an LR row
+    let rowGap = 4.5;    // gap between LR rows
+    let chargeH = 7;     // height per extra charge line
+    let lrFont = 10;
+
+    // What we need at ideal metrics:
+    const needed = () => totalLRLines * lineH + nRows * rowGap + nExtra * chargeH;
+
+    // Compress until it fits the available slot. Shrink gaps first, then line height,
+    // then font — with hard minimums that still guarantee fit because avail is fixed.
+    if (needed() > avail) {
+      // single scale factor against the compressible parts
+      const k = avail / needed();
+      lineH = Math.max(2.4, lineH * k);
+      rowGap = Math.max(0.6, rowGap * k);
+      chargeH = Math.max(3.4, chargeH * k);
+      // step the font down as density rises
       if (k < 0.85) { lrFont = 9; }
-      if (k < 0.7)  { lrFont = 8.5; }
+      if (k < 0.7)  { lrFont = 8; }
+      if (k < 0.55) { lrFont = 7; }
+      // final safety: if STILL over (extreme counts), force exact fit on row gaps/line height
+      let guard = 0;
+      while (needed() > avail && guard++ < 40) {
+        lineH = Math.max(2.1, lineH * 0.96);
+        rowGap = Math.max(0.3, rowGap * 0.9);
+        chargeH = Math.max(3.0, chargeH * 0.94);
+      }
     }
 
     // LR sub-header (bold, underlined)
@@ -224,27 +293,34 @@ const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgs
       rowY += rowLines[ri] * lineH + rowGap;
     });
 
-    // additional charges stacked below LR rows
+    // additional charges — stacked directly below the LR rows, but never past the GST note
     if (extras.length) {
-      let cy = rowY + 2;
+      const chFont = Math.min(10, Math.max(7, lrFont));
+      const gstLineY = bodyBottom - 4;
+      let cy = rowY + Math.max(1.5, rowGap);
+      // if they'd collide with the GST note, bottom-anchor the stack just above it
+      const stackH = extras.length * chargeH;
+      if (cy + stackH > gstLineY - 3) {
+        cy = gstLineY - 3 - stackH;
+      }
       extras.forEach(ch => {
-  doc.setFont('times', 'bold'); doc.setFontSize(10);
-  const label = ch.label.toUpperCase();
-  let w = doc.getTextWidth(label);
-  const maxW = (amtX - 2) - (snoX + 3);
-  if (w > maxW) {                                   // longer than the whole column: shrink font
-    doc.setFontSize(Math.max(7.5, 10 * maxW / w));
-    w = doc.getTextWidth(label);
-  }
-  if (snoX + 108 + w / 2 > amtX - 2) {
-    doc.text(label, amtX - 2, cy, { align: 'right' }); // auto-shift left, end at column edge
-  } else {
-    doc.text(label, snoX + 108, cy, { align: 'center' });
-  }
-  doc.setFontSize(11.5);
-  doc.text(formatAmount(Number(ch.amount)), R - 3, cy, { align: 'right' });
-  cy += chargeH;
-});
+        doc.setFont('times', 'bold'); doc.setFontSize(chFont);
+        const label = ch.label.toUpperCase();
+        let w = doc.getTextWidth(label);
+        const maxW = (amtX - 2) - (snoX + 3);
+        if (w > maxW) {
+          doc.setFontSize(Math.max(6.5, chFont * maxW / w));
+          w = doc.getTextWidth(label);
+        }
+        if (snoX + 108 + w / 2 > amtX - 2) {
+          doc.text(label, amtX - 2, cy, { align: 'right' });
+        } else {
+          doc.text(label, snoX + 108, cy, { align: 'center' });
+        }
+        doc.setFontSize(Math.min(11.5, chFont + 1.5));
+        doc.text(formatAmount(Number(ch.amount)), R - 3, cy, { align: 'right' });
+        cy += chargeH;
+      });
     }
 
     // GST note at bottom of description box
@@ -252,8 +328,7 @@ const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgs
     doc.text(inv.gstNote, snoX + 3, bodyBottom - 4);
 
     // ---------- TOTAL ROW ----------
-    const totH = 9;
-      doc.rect(M, bodyBottom, W, totH);
+    doc.rect(M, bodyBottom, W, totH);
     doc.line(snoX, bodyBottom, snoX, bodyBottom + totH);
     doc.line(amtX, bodyBottom, amtX, bodyBottom + totH);
     doc.setFont('times', 'bold'); doc.setFontSize(11.5);
@@ -261,8 +336,6 @@ const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgs
     doc.text(invoiceTotal(inv).toFixed(2), R - 3, bodyBottom + 5.7, { align: 'right' });
 
     // ---------- FOOTER BLOCK ----------
-    const fTop = bodyBottom + totH + 4;
-    const fH = 70;
     const fBottom = fTop + fH;
     doc.rect(M, fTop, W, fH);
 
@@ -316,10 +389,18 @@ const cellText = (row: LrRow, key: keyof LrRow): string => key === 'pkgs' ? pkgs
     doc.text('The goods were dispatched as per above details.', M + 3, decY + 6);
     doc.text('Kindly payment & oblige.', M + 3, decY + 12);
 
+    const sigCx = sigBoxX + (R - sigBoxX) / 2;
     doc.setFontSize(11.5);
-    doc.text(`FOR ${c.name}`, sigBoxX + (R - sigBoxX) / 2, decY + 1, { align: 'center' });
-    doc.setFont('times', 'normal'); doc.setFontSize(10.5);
-    doc.text('Authorised signature', sigBoxX + (R - sigBoxX) / 2, fBottom - 2.5, { align: 'center' });
+    doc.text(`FOR ${c.name}`, sigCx, decY + 1, { align: 'center' });
+    if (inv.digitalSignature && inv.signatoryName) {
+      this.drawSignature(doc, sigCx, fBottom - 12, 0.6);
+      doc.setFont('times', 'normal'); doc.setFontSize(6);
+      doc.setTextColor(70, 70, 70);
+      doc.text(`(Digitally signed by ${inv.signatoryName})`, sigCx, fBottom - 4.5, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+    }
+    doc.setFont('times', 'normal'); doc.setFontSize(10);
+    doc.text('Authorised signature', sigCx, fBottom - 1, { align: 'center' });
 
     // ---------- BOTTOM LINE ----------
     doc.setFont('times', 'bold'); doc.setFontSize(11);

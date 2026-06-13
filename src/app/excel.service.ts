@@ -12,9 +12,11 @@ const THIN: Partial<ExcelJS.Borders> = {
 export class ExcelService {
 
   async generate(inv: Invoice): Promise<void> {
-    const wb = new ExcelJS.Workbook();
-    this.buildSheet(wb.addWorksheet('DUPLICATE COPY'), inv, 'DUPLICATE COPY');
+  const wb = new ExcelJS.Workbook();
     this.buildSheet(wb.addWorksheet('ORIGINAL COPY'), inv, 'ORIGINAL COPY');
+    if (inv.bothCopies) {
+      this.buildSheet(wb.addWorksheet('DUPLICATE COPY'), inv, 'DUPLICATE COPY');
+    }
     const buf = await wb.xlsx.writeBuffer();
     saveAs(new Blob([buf]), `Invoice_${inv.invoiceNo}.xlsx`);
   }
@@ -111,8 +113,7 @@ export class ExcelService {
       set(`D${r}`, row.from, bold(10), center);
       set(`E${r}`, row.to, bold(10), { ...center, wrapText: true });
       set(`F${r}`, row.description, bold(10), { ...center, wrapText: true });
-set(`G${r}`, String(row.pkgs ?? '').trim().split(/\s+/).filter(Boolean).join('\n'), bold(10), { ...center, wrapText: true });
-
+      set(`G${r}`, String(row.pkgs ?? '').trim().split(/\s+/).filter(Boolean).join('\n'), bold(10), { ...center, wrapText: true });
       r++;
     });
 
@@ -162,6 +163,11 @@ set(`G${r}`, String(row.pkgs ?? '').trim().split(/\s+/).filter(Boolean).join('\n
     set(`E${f}`, `FOR ${c.name}`, bold(12), center, `E${f}:H${f}`); f++;
     set(`A${f}`, 'The goods were dispatched as per above details.', bold(10), left, `A${f}:D${f}`); f++;
     set(`A${f}`, 'Kindly payment & oblige.', bold(10), left, `A${f}:D${f}`); f++;
+   if (inv.digitalSignature && inv.signatoryName) {
+      set(`E${f}`, inv.signatoryName, { name: 'Segoe Script', italic: true, bold: true, size: 18, color: { argb: 'FF0F2355' } }, center, `E${f}:H${f}`);
+      ws.getRow(f).height = 26; f++;
+      set(`E${f}`, `(Digitally signed by ${inv.signatoryName})`, { ...norm(8), color: { argb: 'FF464646' } }, center, `E${f}:H${f}`); f++;
+    }
     set(`E${f}`, 'Authorised signature', norm(11), center, `E${f}:H${f}`);
     const fEnd = f;
 
