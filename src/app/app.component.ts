@@ -75,13 +75,13 @@ import { ExcelService } from './excel.service';
             </thead>
             <tbody>
               <tr *ngFor="let row of inv.lrRows; let i = index">
-                <td><input [(ngModel)]="row.lrNo" (ngModelChange)="onChange()"></td>
-                <td><input [(ngModel)]="row.date" (ngModelChange)="onChange()"></td>
-                <td><input [(ngModel)]="row.from" (ngModelChange)="onChange()"></td>
-                <td><input [(ngModel)]="row.to" (ngModelChange)="onChange()"></td>
-                <td><input [(ngModel)]="row.description" (ngModelChange)="onChange()"></td>
-                <td><input [(ngModel)]="row.pkgs" (ngModelChange)="onChange()" placeholder="ROLL 12"></td>
-                <td><button class="btn small danger" (click)="removeLr(i)" [disabled]="inv.lrRows.length === 1">×</button></td>
+                <td data-label="L.R. No"><input [(ngModel)]="row.lrNo" (ngModelChange)="onChange()"></td>
+                <td data-label="Date"><input [(ngModel)]="row.date" (ngModelChange)="onChange()"></td>
+                <td data-label="From"><input [(ngModel)]="row.from" (ngModelChange)="onChange()"></td>
+                <td data-label="To"><input [(ngModel)]="row.to" (ngModelChange)="onChange()"></td>
+                <td data-label="Description"><input [(ngModel)]="row.description" (ngModelChange)="onChange()"></td>
+                <td data-label="Pkgs"><input [(ngModel)]="row.pkgs" (ngModelChange)="onChange()" placeholder="ROLL 12"></td>
+                <td class="lr-remove"><button class="btn small danger" (click)="removeLr(i)" [disabled]="inv.lrRows.length === 1">×</button></td>
               </tr>
             </tbody>
           </table>
@@ -150,11 +150,15 @@ import { ExcelService } from './excel.service';
   `,
   styles: [`
     :host { display: block; font-family: 'Segoe UI', system-ui, sans-serif; }
+    * { box-sizing: border-box; }
     .page { min-height: 100vh; background: #eef1f4; }
+
     .topbar { display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 20px; background: #1a2b49; color: #fff; position: sticky; top: 0; z-index: 5; }
+      padding: 12px 20px; background: #1a2b49; color: #fff; position: sticky; top: 0; z-index: 5;
+      flex-wrap: wrap; gap: 10px; }
     .topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
-    .actions { display: flex; gap: 8px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
     .btn { background: #d9a40b; color: #1a2b49; border: none; padding: 8px 16px;
       border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 13px; }
     .btn:hover { filter: brightness(1.08); }
@@ -181,12 +185,12 @@ import { ExcelService } from './excel.service';
     .g2 { grid-template-columns: 1fr 1fr; }
     .g3 { grid-template-columns: 1fr 1fr 1fr; }
     .g4 { grid-template-columns: repeat(4, 1fr); }
-    @media (max-width: 700px) { .g3, .g4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 700px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
 
     label { display: flex; flex-direction: column; font-size: 12px; color: #45556b; gap: 3px; }
     label.full { margin-top: 10px; }
-    input, select { padding: 7px 9px; border: 1px solid #c8d0da; border-radius: 4px;
-      font-size: 13px; font-family: inherit; }
+    input, select { padding: 9px 10px; border: 1px solid #c8d0da; border-radius: 4px;
+      font-size: 16px; font-family: inherit; width: 100%; }
     input:focus, select:focus { outline: 2px solid #1a2b49; outline-offset: -1px; }
     input.readonly { background: #f1f4f7; font-weight: 700; }
 
@@ -195,17 +199,52 @@ import { ExcelService } from './excel.service';
     .g1 { grid-template-columns: 1fr; }
     .checkbox-row { flex-direction: row; align-items: center; gap: 8px; font-size: 14px;
       color: #1a2b49; cursor: pointer; }
-    .checkbox-row input { width: 18px; height: 18px; cursor: pointer; }
+    .checkbox-row input { width: 18px; height: 18px; cursor: pointer; flex: none; }
+
+    /* L.R. table: real table on desktop, stacked cards on mobile */
     .lr-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
     .lr-table th { font-size: 11px; text-align: left; color: #45556b; padding: 2px 4px; }
     .lr-table td { padding: 2px 4px; }
     .lr-table input { width: 100%; box-sizing: border-box; }
 
+    .lr-card { display: none; }
+
     .preview-pane { position: sticky; top: 64px; height: calc(100vh - 80px); }
     .preview-pane iframe { width: 100%; height: 100%; border: 1px solid #c8d0da;
       border-radius: 6px; background: #fff; }
-  `]
-})
+
+    /* ---------------- MOBILE ---------------- */
+    @media (max-width: 700px) {
+      .topbar { padding: 10px 14px; }
+      .topbar h1 { font-size: 15px; width: 100%; }
+      .actions { width: 100%; }
+      .actions .btn { flex: 1; text-align: center; }
+
+      .layout { padding: 10px; gap: 10px; }
+      .card { padding: 12px; }
+
+      .row-line { grid-template-columns: 1fr; gap: 6px; position: relative;
+        border: 1px solid #e3e8ef; border-radius: 6px; padding: 10px; padding-top: 12px; }
+      .row-line .btn.danger { position: absolute; top: 6px; right: 6px;
+        width: 30px; height: 30px; padding: 0; line-height: 1; }
+
+      /* stacked LR entries become cards */
+      .lr-table thead { display: none; }
+      .lr-table, .lr-table tbody, .lr-table tr, .lr-table td { display: block; width: 100%; }
+      .lr-table tr { border: 1px solid #e3e8ef; border-radius: 6px; padding: 10px;
+        margin-bottom: 10px; position: relative; }
+      .lr-table td { padding: 4px 0; }
+      .lr-table td::before { content: attr(data-label); display: block; font-size: 11px;
+        color: #45556b; margin-bottom: 2px; }
+      .lr-table td.lr-remove { padding: 0; }
+      .lr-table td.lr-remove::before { display: none; }
+      .lr-table td.lr-remove .btn.danger { position: absolute; top: 8px; right: 8px;
+        width: 30px; height: 30px; padding: 0; }
+
+      /* preview goes below the form, fixed comfortable height, not sticky */
+      .preview-pane { position: static; height: 70vh; margin-top: 4px; }
+    }
+  `]})
 export class AppComponent {
   inv: Invoice = {
     company: { ...DEFAULT_COMPANY },
