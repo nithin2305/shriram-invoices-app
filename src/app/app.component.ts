@@ -9,6 +9,8 @@ import { numberToWordsIndian } from './number-to-words';
 import { PdfService } from './pdf.service';
 import { ExcelService } from './excel.service';
 import { CLIENTS } from './clients';
+import { DataService, StoredInvoice } from './data.service';
+import { MonthlyReportService } from './monthly-report.service';
 
 @Component({
   selector: 'app-root',
@@ -20,6 +22,7 @@ import { CLIENTS } from './clients';
       <h1>{{ inv.company.name }} — Invoice Generator</h1>
       <div class="actions">
         <button class="btn ghost" (click)="refreshPreview()">Refresh preview</button>
+        <button class="btn save" (click)="saveToDb()">{{ saving ? 'Saving…' : 'Save entry' }}</button>
         <button class="btn" (click)="downloadPdf()">Download PDF</button>
         <button class="btn" (click)="downloadExcel()">Download Excel</button>
       </div>
@@ -28,7 +31,27 @@ import { CLIENTS } from './clients';
     <div class="layout">
       <!-- ==================== FORM ==================== -->
       <div class="form-pane">
-
+<section class="card">
+          <h2>Saved entries &amp; monthly report</h2>
+          <div class="grid g3">
+            <label>Year <input type="number" [(ngModel)]="reportYear"></label>
+            <label>Month
+              <select [(ngModel)]="reportMonth">
+                <option *ngFor="let m of months; let i = index" [value]="i+1">{{ m }}</option>
+              </select>
+            </label>
+            <label>&nbsp;
+              <button class="btn" (click)="downloadMonthlyReport()">{{ reporting ? 'Working…' : 'Monthly Excel' }}</button>
+            </label>
+          </div>
+          <div class="grid g2" style="margin-top:10px">
+            <button class="btn ghost dark" (click)="backup()">Backup all (JSON)</button>
+            <label class="restorebtn">Restore from backup
+              <input type="file" accept="application/json" (change)="restore($event)">
+            </label>
+          </div>
+          <p class="status" *ngIf="dbStatus">{{ dbStatus }}</p>
+        </section>
         <section class="card">
           <h2>Copies</h2>
           <label class="checkbox-row">
@@ -280,16 +303,88 @@ export class AppComponent {
   previewSrc: SafeResourceUrl | null = null;
   clients = CLIENTS;
   selectedClient = '';
+  saving = false;
+  reporting = false;
+  dbStatus = '';
+  reportYear = new Date().getFullYear();
+  reportMonth = new Date().getMonth() + 1;
+  months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(
+constructor(
     private pdf: PdfService,
     private excel: ExcelService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private data: DataService,
+    private report: MonthlyReportService
   ) {
     this.updateWords();
     this.selectedClient = CLIENTS[0].name;
     this.refreshPreview();
+    this.loadClientsFromDb();
+  }
+
+  async loadClientsFromDb(): Promise<void> {
+    try {
+      await this.data.seedClientsIfEmpty(CLIENTS);
+      const list = await this.data.listClients();
+      if (list.length) { this.clients = list; }
+    } catch {
+      // keep the bundled CLIENTS list
+    }
+  }
+
+  async saveToDb(): Promise<void> {
+    this.saving = true; this.dbStatus = '';
+    try {
+      await this.data.saveInvoice(this.inv);
+      this.dbStatus = `Saved invoice ${this.inv.invoiceNo}.`;
+    } catch (e: any) {
+      this.dbStatus = 'Save failed: ' + (e?.message ?? 'unknown error.');
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  async downloadMonthlyReport(): Promise<void> {
+    this.reporting = true; this.dbStatus = '';
+    try {
+      const rows: StoredInvoice[] = await this.data.listByMonth(this.reportYear, this.reportMonth);
+      if (!rows.length) { this.dbStatus = 'No invoices found for that month.'; return; }
+      await this.report.generate(rows, this.reportYear, this.reportMonth);
+      this.dbStatus = `Generated report for ${rows.length} invoice(s).`;
+    } catch (e: any) {
+      this.dbStatus = 'Report failed: ' + (e?.message ?? 'unknown error.');
+    } finally {
+      this.reporting = false;
+    }
+  }
+
+  async backup(): Promise<void> {
+    const json = await this.data.exportAll();
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `invoices_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    this.dbStatus = 'Backup downloaded.';
+  }
+
+  async restore(ev: Event): Promise<void> {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files && input.files[0];
+    if (!file) { return; }
+    try {
+      const text = await file.text();
+      await this.data.importAll(text);
+      await this.loadClientsFromDb();
+      this.dbStatus = 'Backup restored.';
+    } catch (e: any) {
+      this.dbStatus = 'Restore failed: ' + (e?.message ?? 'invalid file.');
+    } finally {
+      input.value = '';
+    }
   }
 
   get totalDisplay(): string {
