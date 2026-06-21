@@ -4,7 +4,8 @@ import { Invoice, LrRow, formatAmount, invoiceTotal } from './invoice.model';
 
 @Injectable({ providedIn: 'root' })
 export class PdfService {
-generate(inv: Invoice): void {
+
+  generate(inv: Invoice): void {
     const doc = this.build(inv);
     doc.save(`Invoice_${inv.invoiceNo}.pdf`);
   }
@@ -134,7 +135,8 @@ generate(inv: Invoice): void {
     const splitX = M + 119;            // vertical divider
     doc.rect(M, btTop, W, btH);
     doc.line(splitX, btTop, splitX, btTop + btH);
-  doc.setFont('times', 'bold'); doc.setFontSize(11.5);
+
+    doc.setFont('times', 'bold'); doc.setFontSize(11.5);
     const custWidth = splitX - M - 6;     // text must stay left of the divider
     const custRaw: string[] = [inv.customer.name, inv.customer.addressLine1, inv.customer.addressLine2]
       .filter(t => t && String(t).trim());
@@ -150,6 +152,7 @@ generate(inv: Invoice): void {
     doc.setFontSize(custFont);
     let by = btTop + topPad;
     custLines.forEach(line => { doc.text(line, M + 3, by); by += lh; });
+
     // right side: invoice no box (top) and date box
     const invNoBoxH = 17;
     doc.line(splitX, btTop + invNoBoxH, R, btTop + invNoBoxH);
@@ -193,23 +196,31 @@ generate(inv: Invoice): void {
     const nVeh = Math.max(1, inv.vehicles.length);
     const r1H = Math.max(9, 3.5 + nVeh * 6);
     doc.line(snoX, bodyTop + r1H, amtX, bodyTop + r1H);
-    const vSplit1 = snoX + 56;
-    const vSplit2 = snoX + 102;
+    const vSplit1 = snoX + 50;          // label | vehicle-no divider
+    const vSplit2 = snoX + 96;          // vehicle-no | vehicle-type divider
     doc.line(vSplit1, bodyTop, vSplit1, bodyTop + r1H);
     doc.line(vSplit2, bodyTop, vSplit2, bodyTop + r1H);
     doc.setFontSize(11.5);
-    doc.text(inv.charges[0] ? inv.charges[0].label : 'Transportation Charges', snoX + 3, bodyTop + 6);
-    doc.setFontSize(10);
+    doc.text(String(inv.charges[0]?.label ?? ''), snoX + 3, bodyTop + 6);
+    // draw text, auto-shrinking the font so it never crosses maxX
+    const fitText = (txt: string, x2: number, y2: number, maxX: number, baseSize: number): void => {
+      doc.setFontSize(baseSize);
+      const maxW = maxX - x2;
+      const w = doc.getTextWidth(txt);
+      if (w > maxW) { doc.setFontSize(Math.max(6.5, baseSize * maxW / w)); }
+      doc.text(txt, x2, y2);
+      doc.setFontSize(baseSize);
+    };
     inv.vehicles.forEach((v, i) => {
       const vy = bodyTop + 6 + i * 6;
-      doc.text(`Vehicle No: ${v.vehicleNo}`, vSplit1 + 3, vy);
-      doc.text(`VehicleType: ${v.vehicleType}`, vSplit2 + 3, vy);
+      fitText(`Vehicle No: ${v.vehicleNo ?? ''}`, vSplit1 + 3, vy, vSplit2 - 1, 10);
+      fitText(`VehicleType: ${v.vehicleType ?? ''}`, vSplit2 + 3, vy, amtX - 1, 10);
     });
 
     // first charge amount just below row 1
     doc.setFontSize(11.5);
     if (inv.charges[0]) {
-      doc.text(formatAmount(inv.charges[0].amount), R - 3, bodyTop + r1H + 5.5, { align: 'right' });
+      doc.text(formatAmount(Number(inv.charges[0].amount) || 0), R - 3, bodyTop + r1H + 5.5, { align: 'right' });
     }
 
     // ---- AUTO-FIT BODY: measure content, compress spacing to guarantee one A4 page ----
@@ -238,7 +249,7 @@ generate(inv: Invoice): void {
       return maxLines;
     });
 
-    const extras = inv.charges.slice(1).filter(ch => ch.label && Number(ch.amount) !== 0);
+    const extras = inv.charges.slice(1).filter(ch => (ch.label && String(ch.label).trim()) || Number(ch.amount) !== 0);
     const lrHeaderH = 7;          // LR header line + gap
     const gstReserve = 8;         // space kept for GST note at body bottom
     const avail = bodyH - r1H - lrHeaderH - gstReserve - 2;
@@ -257,19 +268,15 @@ generate(inv: Invoice): void {
     // What we need at ideal metrics:
     const needed = () => totalLRLines * lineH + nRows * rowGap + nExtra * chargeH;
 
-    // Compress until it fits the available slot. Shrink gaps first, then line height,
-    // then font — with hard minimums that still guarantee fit because avail is fixed.
+    // Compress until it fits the available slot.
     if (needed() > avail) {
-      // single scale factor against the compressible parts
       const k = avail / needed();
       lineH = Math.max(2.4, lineH * k);
       rowGap = Math.max(0.6, rowGap * k);
       chargeH = Math.max(3.4, chargeH * k);
-      // step the font down as density rises
       if (k < 0.85) { lrFont = 9; }
       if (k < 0.7)  { lrFont = 8; }
       if (k < 0.55) { lrFont = 7; }
-      // final safety: if STILL over (extreme counts), force exact fit on row gaps/line height
       let guard = 0;
       while (needed() > avail && guard++ < 40) {
         lineH = Math.max(2.1, lineH * 0.96);
@@ -306,14 +313,13 @@ generate(inv: Invoice): void {
       const chFont = Math.min(10, Math.max(7, lrFont));
       const gstLineY = bodyBottom - 4;
       let cy = rowY + Math.max(1.5, rowGap);
-      // if they'd collide with the GST note, bottom-anchor the stack just above it
       const stackH = extras.length * chargeH;
       if (cy + stackH > gstLineY - 3) {
         cy = gstLineY - 3 - stackH;
       }
       extras.forEach(ch => {
         doc.setFont('times', 'bold'); doc.setFontSize(chFont);
-        const label = ch.label.toUpperCase();
+        const label = String(ch.label ?? '').toUpperCase();
         let w = doc.getTextWidth(label);
         const maxW = (amtX - 2) - (snoX + 3);
         if (w > maxW) {

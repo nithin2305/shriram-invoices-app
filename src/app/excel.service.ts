@@ -12,7 +12,7 @@ const THIN: Partial<ExcelJS.Borders> = {
 export class ExcelService {
 
   async generate(inv: Invoice): Promise<void> {
-  const wb = new ExcelJS.Workbook();
+    const wb = new ExcelJS.Workbook();
     this.buildSheet(wb.addWorksheet('ORIGINAL COPY'), inv, 'ORIGINAL COPY');
     if (inv.bothCopies) {
       this.buildSheet(wb.addWorksheet('DUPLICATE COPY'), inv, 'DUPLICATE COPY');
@@ -87,7 +87,7 @@ export class ExcelService {
     const vehEnd = 12 + vehicles.length - 1;
     set('A12', 1, bold(12), center);
     if (vehicles.length > 1) { ws.mergeCells(`A12:A${vehEnd}`); }
-    set('B12', inv.charges[0]?.label ?? 'Transportation Charges', bold(11), left, 'B12:D12');
+    set('B12', String(inv.charges[0]?.label ?? ''), bold(11), left, 'B12:D12');
     if (vehicles.length > 1) { ws.mergeCells(`B13:D${vehEnd}`); }
     vehicles.forEach((v, i) => {
       const r = 12 + i;
@@ -119,9 +119,9 @@ export class ExcelService {
 
     // ---- ADDITIONAL CHARGES (charges[1..]) ----
     let chargeRow = Math.max(r + 1, lrHeadRow + 4);
-    const extras = inv.charges.slice(1).filter(ch => ch.label && Number(ch.amount) !== 0);
+    const extras = inv.charges.slice(1).filter(ch => (ch.label && String(ch.label).trim()) || Number(ch.amount) !== 0);
     extras.forEach(ch => {
-      set(`E${chargeRow}`, ch.label.toUpperCase(), bold(10), center, `E${chargeRow}:F${chargeRow}`);
+      set(`E${chargeRow}`, String(ch.label ?? '').toUpperCase(), bold(10), center, `E${chargeRow}:F${chargeRow}`);
       set(`H${chargeRow}`, formatAmount(Number(ch.amount)), bold(11), right);
       chargeRow++;
     });
@@ -163,7 +163,7 @@ export class ExcelService {
     set(`E${f}`, `FOR ${c.name}`, bold(12), center, `E${f}:H${f}`); f++;
     set(`A${f}`, 'The goods were dispatched as per above details.', bold(10), left, `A${f}:D${f}`); f++;
     set(`A${f}`, 'Kindly payment & oblige.', bold(10), left, `A${f}:D${f}`); f++;
-   if (inv.digitalSignature && inv.signatoryName) {
+    if (inv.digitalSignature && inv.signatoryName) {
       set(`E${f}`, inv.signatoryName, { name: 'Segoe Script', italic: true, bold: true, size: 18, color: { argb: 'FF0F2355' } }, center, `E${f}:H${f}`);
       ws.getRow(f).height = 26; f++;
       set(`E${f}`, `(Digitally signed by ${inv.signatoryName})`, { ...norm(8), color: { argb: 'FF464646' } }, center, `E${f}:H${f}`); f++;
