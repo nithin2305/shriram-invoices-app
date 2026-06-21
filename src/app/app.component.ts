@@ -22,16 +22,17 @@ import { MonthlyReportService } from './monthly-report.service';
       <h1>{{ inv.company.name }} — Invoice Generator</h1>
       <div class="actions">
         <button class="btn ghost" (click)="refreshPreview()">Refresh preview</button>
-        <button class="btn save" (click)="saveToDb()">{{ saving ? 'Saving…' : 'Save entry' }}</button>
         <button class="btn" (click)="downloadPdf()">Download PDF</button>
         <button class="btn" (click)="downloadExcel()">Download Excel</button>
+        <button class="btn save" (click)="saveToDb()">{{ saving ? 'Saving…' : 'Save entry' }}</button>
       </div>
     </header>
 
     <div class="layout">
       <!-- ==================== FORM ==================== -->
       <div class="form-pane">
-<section class="card">
+
+        <section class="card">
           <h2>Saved entries &amp; monthly report</h2>
           <div class="grid g3">
             <label>Year <input type="number" [(ngModel)]="reportYear"></label>
@@ -52,6 +53,7 @@ import { MonthlyReportService } from './monthly-report.service';
           </div>
           <p class="status" *ngIf="dbStatus">{{ dbStatus }}</p>
         </section>
+
         <section class="card">
           <h2>Copies</h2>
           <label class="checkbox-row">
@@ -73,13 +75,18 @@ import { MonthlyReportService } from './monthly-report.service';
           <div class="row-line" *ngFor="let v of inv.vehicles; let i = index">
             <label>Vehicle No <input [(ngModel)]="v.vehicleNo" (ngModelChange)="onChange()"></label>
             <label>Vehicle Type
-              <select [(ngModel)]="v.vehicleType" (ngModelChange)="onChange()">
-                <option>FTL</option><option>LTL</option><option>PTL</option><option>ODC</option>
-              </select>
+              <input [(ngModel)]="v.vehicleType" (ngModelChange)="onChange()" list="vehTypes" placeholder="FTL / 20FT CNTR …">
             </label>
             <button class="btn small danger" (click)="removeVehicle(i)" [disabled]="inv.vehicles.length === 1">×</button>
           </div>
           <button class="btn add small" (click)="addVehicle()">+ Add vehicle</button>
+          <datalist id="vehTypes">
+            <option value="FTL"></option><option value="LTL"></option>
+            <option value="PTL"></option><option value="ODC"></option>
+            <option value="20FT CNTR"></option><option value="40FT CNTR"></option>
+            <option value="32FT CNTR"></option><option value="32FT MXL"></option>
+            <option value="TROLLEY"></option><option value="TRAILER"></option>
+          </datalist>
         </section>
 
         <section class="card">
@@ -92,7 +99,7 @@ import { MonthlyReportService } from './monthly-report.service';
           </label>
           <div class="grid g2" style="margin-top:10px">
             <label>Name <input [(ngModel)]="inv.customer.name" (ngModelChange)="onCustomerEdit()"></label>
-            <label>GST No <input [ngModel]="inv.customer.gstNo || ''" (ngModelChange)="inv.customer.gstNo = $event; onCustomerEdit()"></label>
+            <label>GST No <input [(ngModel)]="inv.customer.gstNo" (ngModelChange)="onCustomerEdit()"></label>
             <label>Address line 1 <input [(ngModel)]="inv.customer.addressLine1" (ngModelChange)="onCustomerEdit()"></label>
             <label>Address line 2 <input [(ngModel)]="inv.customer.addressLine2" (ngModelChange)="onCustomerEdit()"></label>
           </div>
@@ -199,6 +206,12 @@ import { MonthlyReportService } from './monthly-report.service';
       margin-top: 4px; }
     .btn.add:hover { background: #1a2b49; color: #fff; }
     .btn.danger { background: #c0392b; color: #fff; }
+    .btn.save { background: #1f8a4c; color: #fff; }
+    .btn.ghost.dark { color: #1a2b49; border-color: #1a2b49; }
+    .restorebtn { font-size: 13px; font-weight: 600; color: #1a2b49; cursor: pointer;
+      border: 1px dashed #1a2b49; border-radius: 4px; padding: 8px 12px; text-align: center; }
+    .restorebtn input { display: none; }
+    .status { font-size: 12px; color: #45556b; margin: 8px 0 0; }
     .btn:disabled { opacity: .4; cursor: not-allowed; }
 
     .layout { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
@@ -259,7 +272,6 @@ import { MonthlyReportService } from './monthly-report.service';
       .row-line .btn.danger { position: absolute; top: 6px; right: 6px;
         width: 30px; height: 30px; padding: 0; line-height: 1; }
 
-      /* stacked LR entries become cards */
       .lr-table thead { display: none; }
       .lr-table, .lr-table tbody, .lr-table tr, .lr-table td { display: block; width: 100%; }
       .lr-table tr { border: 1px solid #e3e8ef; border-radius: 6px; padding: 10px;
@@ -272,7 +284,6 @@ import { MonthlyReportService } from './monthly-report.service';
       .lr-table td.lr-remove .btn.danger { position: absolute; top: 8px; right: 8px;
         width: 30px; height: 30px; padding: 0; }
 
-      /* preview goes below the form, fixed comfortable height, not sticky */
       .preview-pane { position: static; height: 70vh; margin-top: 4px; }
     }
   `]
@@ -311,7 +322,7 @@ export class AppComponent {
   months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
 
-constructor(
+  constructor(
     private pdf: PdfService,
     private excel: ExcelService,
     private sanitizer: DomSanitizer,
@@ -324,6 +335,7 @@ constructor(
     this.loadClientsFromDb();
   }
 
+  /** Seed the local client table once, then load from it. */
   async loadClientsFromDb(): Promise<void> {
     try {
       await this.data.seedClientsIfEmpty(CLIENTS);
@@ -331,32 +343,6 @@ constructor(
       if (list.length) { this.clients = list; }
     } catch {
       // keep the bundled CLIENTS list
-    }
-  }
-
-  async saveToDb(): Promise<void> {
-    this.saving = true; this.dbStatus = '';
-    try {
-      await this.data.saveInvoice(this.inv);
-      this.dbStatus = `Saved invoice ${this.inv.invoiceNo}.`;
-    } catch (e: any) {
-      this.dbStatus = 'Save failed: ' + (e?.message ?? 'unknown error.');
-    } finally {
-      this.saving = false;
-    }
-  }
-
-  async downloadMonthlyReport(): Promise<void> {
-    this.reporting = true; this.dbStatus = '';
-    try {
-      const rows: StoredInvoice[] = await this.data.listByMonth(this.reportYear, this.reportMonth);
-      if (!rows.length) { this.dbStatus = 'No invoices found for that month.'; return; }
-      await this.report.generate(rows, this.reportYear, this.reportMonth);
-      this.dbStatus = `Generated report for ${rows.length} invoice(s).`;
-    } catch (e: any) {
-      this.dbStatus = 'Report failed: ' + (e?.message ?? 'unknown error.');
-    } finally {
-      this.reporting = false;
     }
   }
 
@@ -387,6 +373,32 @@ constructor(
     }
   }
 
+  async saveToDb(): Promise<void> {
+    this.saving = true; this.dbStatus = '';
+    try {
+      await this.data.saveInvoice(this.inv);
+      this.dbStatus = `Saved invoice ${this.inv.invoiceNo}.`;
+    } catch (e: any) {
+      this.dbStatus = 'Save failed: ' + (e?.message ?? 'unknown error.');
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  async downloadMonthlyReport(): Promise<void> {
+    this.reporting = true; this.dbStatus = '';
+    try {
+      const rows: StoredInvoice[] = await this.data.listByMonth(this.reportYear, this.reportMonth);
+      if (!rows.length) { this.dbStatus = 'No invoices found for that month.'; return; }
+      await this.report.generate(rows, this.reportYear, this.reportMonth);
+      this.dbStatus = `Generated report for ${rows.length} invoice(s).`;
+    } catch (e: any) {
+      this.dbStatus = 'Report failed: ' + (e?.message ?? 'unknown error.');
+    } finally {
+      this.reporting = false;
+    }
+  }
+
   get totalDisplay(): string {
     return formatAmount(invoiceTotal(this.inv));
   }
@@ -413,7 +425,6 @@ constructor(
 
   onChange(): void {
     this.updateWords();
-    // debounce preview regeneration
     if (this.previewTimer) { clearTimeout(this.previewTimer); }
     this.previewTimer = setTimeout(() => this.refreshPreview(), 600);
   }
@@ -438,7 +449,7 @@ constructor(
   }
 
   addVehicle(): void {
-    this.inv.vehicles.push({ vehicleNo: '', vehicleType: 'FTL' });
+    this.inv.vehicles.push({ vehicleNo: '', vehicleType: '' });
     this.onChange();
   }
 
