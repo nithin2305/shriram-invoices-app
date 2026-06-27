@@ -1,0 +1,12 @@
+{
+  "name": "shriram-invoice-server",
+  "version": "1.0.0",
+  "description": "Tiny local SQLite-backed API for the Shriram invoice app",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

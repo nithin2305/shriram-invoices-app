@@ -24,7 +24,7 @@ import { MonthlyReportService } from './monthly-report.service';
         <button class="btn ghost" (click)="refreshPreview()">Refresh preview</button>
         <button class="btn" (click)="downloadPdf()">Download PDF</button>
         <button class="btn" (click)="downloadExcel()">Download Excel</button>
-        <button class="btn save" (click)="saveToDb()">{{ saving ? 'Saving…' : 'Save entry' }}</button>
+        <button class="btn save" (click)="saveToDb()">{{ saving ? 'Saving…' : (isExisting ? 'Update entry' : 'Save entry') }}</button>
       </div>
     </header>
 
@@ -52,6 +52,27 @@ import { MonthlyReportService } from './monthly-report.service';
             </label>
           </div>
           <p class="status" *ngIf="dbStatus">{{ dbStatus }}</p>
+        </section>
+
+        <section class="card">
+          <h2>Modify saved invoice</h2>
+          <div class="grid g3" style="align-items:end">
+            <label style="grid-column: span 2">Saved invoice
+              <select [(ngModel)]="selectedSavedNo">
+                <option value="">— Select an invoice no —</option>
+                <option *ngFor="let s of savedInvoices" [value]="s.invoiceNo">
+                  {{ s.invoiceNo }} · {{ s.dateDisplay }} · {{ s.customer.name }} · ₹{{ s.total }}
+                </option>
+              </select>
+            </label>
+            <label>&nbsp;
+              <button class="btn" (click)="loadSelectedInvoice()" [disabled]="!selectedSavedNo || loadingEntry">
+                {{ loadingEntry ? 'Loading…' : 'Load & edit' }}
+              </button>
+            </label>
+          </div>
+          <p class="status">Loads all details into the form. Change anything and press
+            <strong>{{ isExisting ? 'Update entry' : 'Save entry' }}</strong> to update it in the database.</p>
         </section>
 
         <section class="card">
@@ -317,6 +338,9 @@ export class AppComponent {
   saving = false;
   reporting = false;
   dbStatus = '';
+  savedInvoices: StoredInvoice[] = [];
+  selectedSavedNo = '';
+  loadingEntry = false;
   reportYear = new Date().getFullYear();
   reportMonth = new Date().getMonth() + 1;
   months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -333,6 +357,41 @@ export class AppComponent {
     this.selectedClient = CLIENTS[0].name;
     this.refreshPreview();
     this.loadClientsFromDb();
+    this.loadSavedInvoices();
+  }
+
+  /** True when the current invoice number already exists in the database. */
+  get isExisting(): boolean {
+    return this.savedInvoices.some(s => s.invoiceNo === this.inv.invoiceNo);
+  }
+
+  /** Fill the "Modify saved invoice" dropdown. */
+  async loadSavedInvoices(): Promise<void> {
+    try {
+      this.savedInvoices = await this.data.listRecent(200);
+    } catch {
+      this.savedInvoices = [];
+    }
+  }
+
+  /** Pull a saved invoice from the DB and populate every field of the form. */
+  async loadSelectedInvoice(): Promise<void> {
+    if (!this.selectedSavedNo) { return; }
+    this.loadingEntry = true; this.dbStatus = '';
+    try {
+      const rec = await this.data.getInvoice(this.selectedSavedNo);
+      if (!rec) { this.dbStatus = 'Invoice not found.'; return; }
+      // Keep the currently-loaded company header; replace everything else.
+      this.inv = this.data.rowToInvoice(rec, { ...this.inv.company });
+      this.onCustomerEdit();          // sync the client dropdown to the loaded customer
+      this.updateWords();
+      this.refreshPreview();
+      this.dbStatus = `Loaded invoice ${rec.invoiceNo}. Edit and press “Update entry” to save changes.`;
+    } catch (e: any) {
+      this.dbStatus = 'Load failed: ' + (e?.message ?? 'check your Supabase config / connection.');
+    } finally {
+      this.loadingEntry = false;
+    }
   }
 
   /** Seed the local client table once, then load from it. */
@@ -365,6 +424,7 @@ export class AppComponent {
       const text = await file.text();
       await this.data.importAll(text);
       await this.loadClientsFromDb();
+      await this.loadSavedInvoices();
       this.dbStatus = 'Backup restored.';
     } catch (e: any) {
       this.dbStatus = 'Restore failed: ' + (e?.message ?? 'invalid file.');
@@ -375,11 +435,16 @@ export class AppComponent {
 
   async saveToDb(): Promise<void> {
     this.saving = true; this.dbStatus = '';
+    const wasExisting = this.isExisting;
     try {
       await this.data.saveInvoice(this.inv);
-      this.dbStatus = `Saved invoice ${this.inv.invoiceNo}.`;
+      await this.loadSavedInvoices();
+      this.selectedSavedNo = this.inv.invoiceNo;
+      this.dbStatus = wasExisting
+        ? `Updated invoice ${this.inv.invoiceNo}.`
+        : `Saved invoice ${this.inv.invoiceNo}.`;
     } catch (e: any) {
-      this.dbStatus = 'Save failed: ' + (e?.message ?? 'unknown error.');
+      this.dbStatus = 'Save failed: ' + (e?.message ?? 'check your Supabase config / connection.');
     } finally {
       this.saving = false;
     }

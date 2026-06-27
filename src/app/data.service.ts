@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
-import Dexie, { Table } from 'dexie';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Invoice, CustomerDetails, invoiceTotal } from './invoice.model';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.config';
 
 /** A stored invoice (header fields + the variable-length parts). */
 export interface StoredInvoice {
@@ -24,42 +25,52 @@ export interface StoredClient extends CustomerDetails {
   id?: number;
 }
 
-class InvoiceDB extends Dexie {
-  invoices!: Table<StoredInvoice, string>;
-  clients!: Table<StoredClient, number>;
-
-  constructor() {
-    super('shriram_invoices');
-    this.version(1).stores({
-      invoices: 'invoiceNo, isoDate, savedAt',
-      clients: '++id, name'
-    });
-  }
+/** One row of the `invoices` table. The full invoice lives in `data` (jsonb). */
+interface InvoiceRow {
+  invoice_no: string;
+  iso_date: string;
+  saved_at: string;
+  total: number;
+  customer_name: string;
+  data: StoredInvoice;
 }
 
+/**
+ * Stores all data in a Supabase (cloud Postgres) database.
+ * Works both locally (npm start) and when deployed to GitHub Pages, and syncs
+ * across every device. Configure your project in `supabase.config.ts`.
+ */
 @Injectable({ providedIn: 'root' })
 export class DataService {
-  private db = new InvoiceDB();
+  private sb: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   // ---------------- CLIENTS ----------------
   async listClients(): Promise<CustomerDetails[]> {
-    const rows = await this.db.clients.orderBy('name').toArray();
-    return rows.map(({ id, ...c }) => c);
+    const { data, error } = await this.sb.from('clients').select('data').order('name');
+    if (error) { throw error; }
+    return (data ?? []).map(r => r.data as CustomerDetails);
   }
 
   async addClient(c: CustomerDetails): Promise<void> {
-    await this.db.clients.add({ ...c });
+    const { error } = await this.sb.from('clients').insert({ name: c.name, data: c });
+    if (error) { throw error; }
   }
 
-  /** Seed the client table once (from the bundled list) if it's empty. */
+  /** Seed the client table once (only if it is currently empty). */
   async seedClientsIfEmpty(list: CustomerDetails[]): Promise<void> {
-    const count = await this.db.clients.count();
-    if (count === 0 && list.length) {
-      await this.db.clients.bulkAdd(list.map(c => ({ ...c })));
+    const { count, error } = await this.sb
+      .from('clients')
+      .select('id', { count: 'exact', head: true });
+    if (error) { throw error; }
+    if ((count ?? 0) === 0 && list.length) {
+      const rows = list.map(c => ({ name: c.name, data: c }));
+      const { error: insErr } = await this.sb.from('clients').insert(rows);
+      if (insErr) { throw insErr; }
     }
   }
 
   // ---------------- INVOICES ----------------
+  /** Save or update. Upserts by invoice_no, so this also "modifies". */
   async saveInvoice(inv: Invoice): Promise<void> {
     const rec: StoredInvoice = {
       invoiceNo: inv.invoiceNo,
@@ -77,7 +88,24 @@ export class DataService {
       bothCopies: inv.bothCopies,
       savedAt: new Date().toISOString()
     };
-    await this.db.invoices.put(rec);   // put = insert or overwrite by invoiceNo
+    const row: InvoiceRow = {
+      invoice_no: rec.invoiceNo,
+      iso_date: rec.isoDate,
+      saved_at: rec.savedAt,
+      total: rec.total,
+      customer_name: rec.customer.name,
+      data: rec
+    };
+    const { error } = await this.sb.from('invoices').upsert(row, { onConflict: 'invoice_no' });
+    if (error) { throw error; }
+  }
+
+  /** Fetch a single saved invoice by its number (used to populate the form when modifying). */
+  async getInvoice(invoiceNo: string): Promise<StoredInvoice | null> {
+    const { data, error } = await this.sb
+      .from('invoices').select('data').eq('invoice_no', invoiceNo).maybeSingle();
+    if (error) { throw error; }
+    return data ? (data.data as StoredInvoice) : null;
   }
 
   async listByMonth(year: number, month: number): Promise<StoredInvoice[]> {
@@ -85,18 +113,25 @@ export class DataService {
     const endMonth = month === 12 ? 1 : month + 1;
     const endYear = month === 12 ? year + 1 : year;
     const end = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
-    return this.db.invoices
-      .where('isoDate').between(start, end, true, false)
-      .sortBy('isoDate');
+    const { data, error } = await this.sb
+      .from('invoices').select('data')
+      .gte('iso_date', start).lt('iso_date', end)
+      .order('iso_date');
+    if (error) { throw error; }
+    return (data ?? []).map(r => r.data as StoredInvoice);
   }
 
   async listRecent(limit = 50): Promise<StoredInvoice[]> {
-    const all = await this.db.invoices.orderBy('savedAt').reverse().toArray();
-    return all.slice(0, limit);
+    const { data, error } = await this.sb
+      .from('invoices').select('data')
+      .order('saved_at', { ascending: false }).limit(limit);
+    if (error) { throw error; }
+    return (data ?? []).map(r => r.data as StoredInvoice);
   }
 
   async deleteInvoice(invoiceNo: string): Promise<void> {
-    await this.db.invoices.delete(invoiceNo);
+    const { error } = await this.sb.from('invoices').delete().eq('invoice_no', invoiceNo);
+    if (error) { throw error; }
   }
 
   rowToInvoice(rec: StoredInvoice, company: Invoice['company']): Invoice {
@@ -118,16 +153,41 @@ export class DataService {
 
   // ---------------- BACKUP / RESTORE ----------------
   async exportAll(): Promise<string> {
-    const invoices = await this.db.invoices.toArray();
-    const clients = await this.db.clients.toArray();
-    return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), invoices, clients }, null, 2);
+    const [inv, cli] = await Promise.all([
+      this.sb.from('invoices').select('data'),
+      this.sb.from('clients').select('data')
+    ]);
+    if (inv.error) { throw inv.error; }
+    if (cli.error) { throw cli.error; }
+    const invoices = (inv.data ?? []).map(r => r.data);
+    const clients = (cli.data ?? []).map(r => r.data);
+    return JSON.stringify(
+      { version: 1, exportedAt: new Date().toISOString(), invoices, clients },
+      null, 2
+    );
   }
 
   async importAll(json: string): Promise<void> {
-    const data = JSON.parse(json);
-    if (data.invoices) { await this.db.invoices.bulkPut(data.invoices); }
-    if (data.clients) {
-      await this.db.clients.bulkAdd((data.clients as StoredClient[]).map(({ id, ...c }) => c));
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed.invoices) && parsed.invoices.length) {
+      const rows: InvoiceRow[] = parsed.invoices.map((rec: StoredInvoice) => ({
+        invoice_no: rec.invoiceNo,
+        iso_date: rec.isoDate ?? this.toIso(rec.dateDisplay),
+        saved_at: rec.savedAt ?? new Date().toISOString(),
+        total: Number(rec.total) || 0,
+        customer_name: rec.customer?.name ?? '',
+        data: rec
+      }));
+      const { error } = await this.sb.from('invoices').upsert(rows, { onConflict: 'invoice_no' });
+      if (error) { throw error; }
+    }
+    if (Array.isArray(parsed.clients) && parsed.clients.length) {
+      const rows = parsed.clients.map((c: StoredClient) => {
+        const { id, ...rest } = c;
+        return { name: rest.name, data: rest };
+      });
+      const { error } = await this.sb.from('clients').insert(rows);
+      if (error) { throw error; }
     }
   }
 

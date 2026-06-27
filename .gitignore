@@ -30,3 +30,9 @@ Thumbs.db
 # Environment files
 .env
 .env.*
+
+# Local SQLite database (data lives here — back up the file itself)
+server/invoices.db
+server/invoices.db-journal
+server/invoices.db-wal
+server/invoices.db-shm
