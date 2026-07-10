@@ -1,13 +1,14 @@
 import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
-import { Invoice, LrRow, formatAmount, invoiceTotal } from './invoice.model';
+import { CompanyDetails, Invoice, LrRow, formatAmount, invoiceTotal } from './invoice.model';
+import { StoredInvoice } from './data.service';
 
 @Injectable({ providedIn: 'root' })
 export class PdfService {
 
   generate(inv: Invoice): void {
     const doc = this.build(inv);
-    doc.save(`Invoice_${inv.invoiceNo}.pdf`);
+    doc.save(`${inv.invoiceNo}.pdf`);
   }
 
   previewUrl(inv: Invoice): string {
@@ -17,6 +18,109 @@ export class PdfService {
   /** The finished PDF as a Blob (used for bulk ZIP downloads). */
   blob(inv: Invoice): Blob {
     return this.build(inv).output('blob');
+  }
+
+  /** Client statement: one row per invoice of a client in a date range. */
+  clientReport(rows: StoredInvoice[], client: string, fromIso: string, toIso: string, company: CompanyDetails): void {
+    const doc = this.buildClientReport(rows, client, fromIso, toIso, company);
+    const safe = (client.trim() || 'client').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
+    doc.save(`Client_Report_${safe}_${fromIso || 'start'}_to_${toIso || 'today'}.pdf`);
+  }
+
+  buildClientReport(rows: StoredInvoice[], client: string, fromIso: string, toIso: string, company: CompanyDetails): jsPDF {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const M = 15, W = 180, R = M + W;
+    const iso2disp = (iso: string, fallback: string): string => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+      return m ? `${m[3]}.${m[2]}.${m[1]}` : fallback;
+    };
+    const period = `Period: ${iso2disp(fromIso, 'beginning')}  to  ${iso2disp(toIso, 'date')}`;
+
+    // column layout (x positions in mm)
+    const col = {
+      snoC: M + 6,           // centered
+      date: M + 14,
+      invNo: M + 40,
+      veh: M + 62,
+      lrC: M + 138,          // centered
+      amtR: R - 2            // right-aligned
+    };
+    const vehMaxW = (col.lrC - 6) - col.veh;
+
+    const drawTableHead = (y: number): number => {
+      doc.setFont('times', 'bold'); doc.setFontSize(10.5);
+      doc.setFillColor(234, 237, 242);
+      doc.rect(M, y, W, 8, 'FD');
+      const ty = y + 5.5;
+      doc.text('S.No', col.snoC, ty, { align: 'center' });
+      doc.text('Date', col.date, ty);
+      doc.text('Invoice No', col.invNo, ty);
+      doc.text('Vehicles', col.veh, ty);
+      doc.text('L.R.s', col.lrC, ty, { align: 'center' });
+      doc.text('Amount', col.amtR, ty, { align: 'right' });
+      return y + 12;
+    };
+
+    // ---------- report header (first page only) ----------
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    let y = 16;
+    doc.setFont('times', 'bold'); doc.setFontSize(17);
+    doc.text(company.name, M + W / 2, y, { align: 'center' });
+    y += 6;
+    doc.setFont('times', 'normal'); doc.setFontSize(10.5);
+    doc.text(company.address, M + W / 2, y, { align: 'center' });
+    y += 5;
+    doc.text(`GSTIN: ${company.gstin}   Contact: ${company.contact}`, M + W / 2, y, { align: 'center' });
+    y += 9;
+    doc.setFont('times', 'bold'); doc.setFontSize(13);
+    doc.text('CLIENT STATEMENT', M + W / 2, y, { align: 'center' });
+    y += 7;
+    doc.setFontSize(11.5);
+    doc.text(client, M, y);
+    doc.setFont('times', 'normal'); doc.setFontSize(10.5);
+    doc.text(period, R, y, { align: 'right' });
+    y += 4;
+    y = drawTableHead(y);
+
+    // ---------- rows ----------
+    let total = 0;
+    rows.forEach((r, i) => {
+      if (y > 275) { doc.addPage(); y = drawTableHead(16); }
+      total += Number(r.total) || 0;
+      doc.setFont('times', 'normal'); doc.setFontSize(10);
+      doc.text(String(i + 1), col.snoC, y, { align: 'center' });
+      doc.text(r.dateDisplay ?? '', col.date, y);
+      doc.text(r.invoiceNo ?? '', col.invNo, y);
+      const veh = (r.vehicles ?? []).map(v => v.vehicleNo).filter(Boolean).join(', ');
+      const vehLine = (doc.splitTextToSize(veh, vehMaxW) as string[])[0] ?? '';
+      doc.text(vehLine, col.veh, y);
+      doc.text(String((r.lrRows ?? []).length), col.lrC, y, { align: 'center' });
+      doc.text(formatAmount(Number(r.total) || 0), col.amtR, y, { align: 'right' });
+      doc.setDrawColor(200, 205, 214);
+      doc.line(M, y + 2, R, y + 2);
+      doc.setDrawColor(0, 0, 0);
+      y += 6.5;
+    });
+
+    // ---------- total ----------
+    if (y > 270) { doc.addPage(); y = 16; }
+    y += 2;
+    doc.setLineWidth(0.5);
+    doc.line(M, y - 4.5, R, y - 4.5);
+    doc.setFont('times', 'bold'); doc.setFontSize(11.5);
+    doc.text(`TOTAL  (${rows.length} invoice${rows.length === 1 ? '' : 's'})`, col.veh, y + 1);
+    doc.text(formatAmount(total), col.amtR, y + 1, { align: 'right' });
+
+    // page numbers
+    const pages = doc.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      doc.setPage(p);
+      doc.setFont('times', 'normal'); doc.setFontSize(9);
+      doc.text(`Page ${p} of ${pages}`, R, 290, { align: 'right' });
+    }
+    return doc;
   }
 
   private build(inv: Invoice): jsPDF {

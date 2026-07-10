@@ -84,6 +84,18 @@ export class MonthlyReportService {
     saveAs(new Blob([buf]), `FY_Report_${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}.xlsx`);
   }
 
+  /** Client statement: every invoice of one client in a date range, one sheet. */
+  async generateClient(rows: StoredInvoice[], client: string, fromIso: string, toIso: string): Promise<void> {
+    const wb = new ExcelJS.Workbook();
+    // sheet names: max 31 chars, no []:*?/\ characters
+    const sheetName = (client.trim().replace(/[\[\]:*?\/\\]/g, '') || 'Client report').slice(0, 31);
+    this.addInvoiceSheet(wb, sheetName, rows);
+    const buf = await wb.xlsx.writeBuffer();
+    const safe = (client.trim() || 'client').replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
+    const period = `${fromIso || 'start'}_to_${toIso || 'today'}`;
+    saveAs(new Blob([buf]), `Client_Report_${safe}_${period}.xlsx`);
+  }
+
   /** One-row-per-invoice sheet (used by both the monthly and FY reports). */
   private addInvoiceSheet(wb: ExcelJS.Workbook, name: string, rows: StoredInvoice[]): void {
     const ws = wb.addWorksheet(name);

@@ -18,7 +18,7 @@ export class ExcelService {
       this.buildSheet(wb.addWorksheet('DUPLICATE COPY'), inv, 'DUPLICATE COPY');
     }
     const buf = await wb.xlsx.writeBuffer();
-    saveAs(new Blob([buf]), `Invoice_${inv.invoiceNo}.xlsx`);
+    saveAs(new Blob([buf]), `${inv.invoiceNo}.xlsx`);
   }
 
   private buildSheet(ws: ExcelJS.Worksheet, inv: Invoice, copyLabel: string): void {

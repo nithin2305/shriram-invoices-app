@@ -82,7 +82,27 @@ import { MonthlyReportService } from './monthly-report.service';
               <button class="btn" (click)="downloadFyReport()">{{ fyReporting ? 'Working…' : 'FY Excel' }}</button>
             </label>
           </div>
+          <div class="subdivider">Client-wise statement</div>
+          <label class="full" style="margin-top:0">Client
+            <select [(ngModel)]="reportClient">
+              <option value="">— Select a client —</option>
+              <option *ngFor="let n of clientReportNames" [value]="n">{{ n }}</option>
+            </select>
+          </label>
           <div class="grid g2" style="margin-top:10px">
+            <label>From (blank = beginning) <input type="date" [(ngModel)]="reportFrom"></label>
+            <label>To (blank = today) <input type="date" [(ngModel)]="reportTo"></label>
+          </div>
+          <div class="grid g2" style="margin-top:10px">
+            <button class="btn" (click)="downloadClientReport('excel')" [disabled]="!reportClient || clientReporting">
+              {{ clientReporting ? 'Working…' : 'Client Excel' }}
+            </button>
+            <button class="btn" (click)="downloadClientReport('pdf')" [disabled]="!reportClient || clientReporting">
+              {{ clientReporting ? 'Working…' : 'Client PDF' }}
+            </button>
+          </div>
+          <div class="subdivider">Backup</div>
+          <div class="grid g2">
             <button class="btn ghost dark" (click)="backup()">Backup all (JSON)</button>
             <label class="restorebtn">Restore from backup
               <input type="file" accept="application/json" (change)="restore($event)">
@@ -318,6 +338,8 @@ import { MonthlyReportService } from './monthly-report.service';
       border: 1px dashed #1a2b49; border-radius: 4px; padding: 8px 12px; text-align: center; }
     .restorebtn input { display: none; }
     .status { font-size: 12px; color: #45556b; margin: 8px 0 0; }
+    .subdivider { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      color: #8593a5; border-top: 1px solid #e3e8ef; margin: 14px 0 8px; padding-top: 8px; }
     .status.empty { padding: 10px; margin: 0; }
     .warn { color: #b7791f; font-size: 12.5px; font-weight: 600; margin: 8px 0 0; }
     .btn:disabled { opacity: .4; cursor: not-allowed; }
@@ -466,6 +488,10 @@ export class AppComponent {
   loadingEntry = false;
   reportYear = new Date().getFullYear();
   reportMonth = new Date().getMonth() + 1;
+  reportClient = '';
+  reportFrom = '';   // yyyy-mm-dd (native date input)
+  reportTo = '';
+  clientReporting = false;
   months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   fyStart = this.currentFyStart();
   fyYears = Array.from({ length: 5 }, (_, i) => this.currentFyStart() - i);
@@ -616,7 +642,7 @@ export class AppComponent {
       sel.forEach(s => {
         const inv = this.data.rowToInvoice(s, { ...this.inv.company });
         const safeNo = s.invoiceNo.replace(/[\\/:*?"<>|]/g, '-');
-        zip.file(`Invoice_${safeNo}.pdf`, this.pdf.blob(inv));
+        zip.file(`${safeNo}.pdf`, this.pdf.blob(inv));
       });
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, `Invoices_${new Date().toISOString().slice(0, 10)}.zip`);
@@ -765,6 +791,37 @@ export class AppComponent {
       this.dbStatus = 'Report failed: ' + (e?.message ?? 'unknown error.');
     } finally {
       this.reporting = false;
+    }
+  }
+
+  /** Client names to offer in the statement dropdown: saved clients + every
+   *  customer that actually appears on a saved invoice (manual entries too). */
+  get clientReportNames(): string[] {
+    const names = new Set<string>();
+    this.clients.forEach(c => { if (c.name?.trim()) { names.add(c.name); } });
+    this.savedInvoices.forEach(s => { if (s.customer?.name?.trim()) { names.add(s.customer.name); } });
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }
+
+  async downloadClientReport(kind: 'excel' | 'pdf'): Promise<void> {
+    if (!this.reportClient) { this.dbStatus = 'Pick a client first.'; return; }
+    if (this.reportFrom && this.reportTo && this.reportFrom > this.reportTo) {
+      this.dbStatus = 'The "From" date is after the "To" date.'; return;
+    }
+    this.clientReporting = true; this.dbStatus = '';
+    try {
+      const rows = await this.data.listByClient(this.reportClient, this.reportFrom, this.reportTo);
+      if (!rows.length) { this.dbStatus = 'No invoices for that client in this period.'; return; }
+      if (kind === 'excel') {
+        await this.report.generateClient(rows, this.reportClient, this.reportFrom, this.reportTo);
+      } else {
+        this.pdf.clientReport(rows, this.reportClient, this.reportFrom, this.reportTo, { ...this.inv.company });
+      }
+      this.dbStatus = `Generated ${kind === 'excel' ? 'Excel' : 'PDF'} statement: ${rows.length} invoice(s) for ${this.reportClient}.`;
+    } catch (e: any) {
+      this.dbStatus = 'Client report failed: ' + (e?.message ?? 'unknown error.');
+    } finally {
+      this.clientReporting = false;
     }
   }
 

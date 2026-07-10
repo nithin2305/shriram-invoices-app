@@ -81,6 +81,9 @@ the database (upsert by invoice no). New invoice numbers are inserted as usual.
   15-char GST No, non-zero total, labelled charges — errors listed at the top.
 - **Financial-year report** (April–March): Excel with month-wise totals,
   client-wise totals, and the full invoice list.
+- **Client-wise statement**: pick a client and a from/to date range (blank =
+  all time) and download every matching invoice as **Excel** or a tabular
+  **PDF statement** with totals and page numbers.
 - Total auto-calculated; **Amount in words auto-generated** in Indian format
   ("RUPEES EIGHT THOUSAND SIX HUNDRED TWENTY ONLY"), still editable.
 - Live PDF preview pane (debounced, updates as you type).

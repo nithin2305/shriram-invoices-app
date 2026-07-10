@@ -152,6 +152,17 @@ export class DataService {
     return (data ?? []).map(r => r.data as StoredInvoice);
   }
 
+  /** All invoices of one client, optionally limited to an iso-date range. */
+  async listByClient(customerName: string, fromIso?: string, toIso?: string): Promise<StoredInvoice[]> {
+    let q = this.sb.from('invoices').select('data')
+      .eq('customer_name', customerName).order('iso_date');
+    if (fromIso) { q = q.gte('iso_date', fromIso); }
+    if (toIso) { q = q.lte('iso_date', toIso); }
+    const { data, error } = await q;
+    if (error) { throw error; }
+    return (data ?? []).map(r => r.data as StoredInvoice);
+  }
+
   /** All invoices of an Indian financial year (April fyStart – March fyStart+1). */
   async listByFinancialYear(fyStart: number): Promise<StoredInvoice[]> {
     const start = `${fyStart}-04-01`;
