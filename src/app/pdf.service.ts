@@ -14,6 +14,11 @@ export class PdfService {
     return this.build(inv).output('bloburl').toString();
   }
 
+  /** The finished PDF as a Blob (used for bulk ZIP downloads). */
+  blob(inv: Invoice): Blob {
+    return this.build(inv).output('blob');
+  }
+
   private build(inv: Invoice): jsPDF {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     if (inv.bothCopies) {

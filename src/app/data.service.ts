@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import { Invoice, CustomerDetails, invoiceTotal } from './invoice.model';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.config';
 
@@ -44,15 +44,46 @@ interface InvoiceRow {
 export class DataService {
   private sb: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  // ---------------- AUTH ----------------
+  /** The stored session, if the user logged in before (survives reloads). */
+  async getSession(): Promise<Session | null> {
+    const { data } = await this.sb.auth.getSession();
+    return data.session;
+  }
+
+  /** Email + password sign-in. Returns an error message, or null on success. */
+  async signIn(email: string, password: string): Promise<string | null> {
+    const { error } = await this.sb.auth.signInWithPassword({ email, password });
+    return error ? error.message : null;
+  }
+
+  async signOut(): Promise<void> {
+    await this.sb.auth.signOut();
+  }
+
   // ---------------- CLIENTS ----------------
-  async listClients(): Promise<CustomerDetails[]> {
-    const { data, error } = await this.sb.from('clients').select('data').order('name');
+  async listClients(): Promise<StoredClient[]> {
+    const { data, error } = await this.sb.from('clients').select('id, data').order('name');
     if (error) { throw error; }
-    return (data ?? []).map(r => r.data as CustomerDetails);
+    return (data ?? []).map(r => ({ ...(r.data as CustomerDetails), id: r.id as number }));
   }
 
   async addClient(c: CustomerDetails): Promise<void> {
-    const { error } = await this.sb.from('clients').insert({ name: c.name, data: c });
+    const { id, ...rest } = c as StoredClient;
+    const { error } = await this.sb.from('clients').insert({ name: rest.name, data: rest });
+    if (error) { throw error; }
+  }
+
+  async updateClient(c: StoredClient): Promise<void> {
+    if (c.id == null) { throw new Error('Client has no id.'); }
+    const { id, ...rest } = c;
+    const { error } = await this.sb.from('clients')
+      .update({ name: rest.name, data: rest }).eq('id', id);
+    if (error) { throw error; }
+  }
+
+  async deleteClient(id: number): Promise<void> {
+    const { error } = await this.sb.from('clients').delete().eq('id', id);
     if (error) { throw error; }
   }
 
@@ -113,6 +144,18 @@ export class DataService {
     const endMonth = month === 12 ? 1 : month + 1;
     const endYear = month === 12 ? year + 1 : year;
     const end = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
+    const { data, error } = await this.sb
+      .from('invoices').select('data')
+      .gte('iso_date', start).lt('iso_date', end)
+      .order('iso_date');
+    if (error) { throw error; }
+    return (data ?? []).map(r => r.data as StoredInvoice);
+  }
+
+  /** All invoices of an Indian financial year (April fyStart – March fyStart+1). */
+  async listByFinancialYear(fyStart: number): Promise<StoredInvoice[]> {
+    const start = `${fyStart}-04-01`;
+    const end = `${fyStart + 1}-04-01`;
     const { data, error } = await this.sb
       .from('invoices').select('data')
       .gte('iso_date', start).lt('iso_date', end)

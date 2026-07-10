@@ -22,10 +22,13 @@ database. The app works the same whether you run it locally or deploy it to
 
 That's it — no server to run.
 
-> ⚠️ **Security:** the anon key is meant to be public (it's safe to commit), but
-> the default policies in `supabase-schema.sql` let anyone with your site URL
-> read/write the data. Fine for an internal tool; if you need it private, add
-> Supabase Auth and switch the policies from `anon` to `authenticated`.
+> 🔒 **Security:** the anon key is meant to be public (it's safe to commit).
+> The data itself is protected by **Supabase Auth**: the policies in
+> `supabase-schema.sql` only allow logged-in users, and the app shows a login
+> screen. Create your login user under **Authentication → Users → Add user**
+> and turn **"Allow new users to sign up" OFF** under Authentication → Sign In /
+> Providers. (Existing projects that ran the old schema: run
+> [`supabase-auth-migration.sql`](supabase-auth-migration.sql) once.)
 
 ## Run locally
 
@@ -66,6 +69,18 @@ the database (upsert by invoice no). New invoice numbers are inserted as usual.
 
 - Form input for: invoice no, date, vehicle no/type, customer (bill-to) details,
   multiple L.R. rows (add/remove), transportation + unloading charges, GST note.
+- **Auto invoice number**: on load the form is pre-filled with the next free
+  number (highest saved + 1); typing an existing number shows an overwrite
+  warning and saving asks for confirmation.
+- **Saved invoices list** with filter, per-row **Load** (edit in place) and
+  **Copy** (duplicate with next number + today's date), plus checkboxes to
+  **bulk-download the selected invoices as PDFs in one ZIP**.
+- **Manage clients**: add, edit and delete clients from the UI (and a one-click
+  "save this bill-to as a client" button).
+- **Validation before save**: invoice no, valid dd.mm.yyyy dates, customer name,
+  15-char GST No, non-zero total, labelled charges — errors listed at the top.
+- **Financial-year report** (April–March): Excel with month-wise totals,
+  client-wise totals, and the full invoice list.
 - Total auto-calculated; **Amount in words auto-generated** in Indian format
   ("RUPEES EIGHT THOUSAND SIX HUNDRED TWENTY ONLY"), still editable.
 - Live PDF preview pane (debounced, updates as you type).
