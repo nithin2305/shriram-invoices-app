@@ -45,8 +45,12 @@ npm start          # opens at http://localhost:4200
 3. Push this project to a GitHub repo, then:
 
    ```bash
-   npm run deploy   # builds for production and pushes to the gh-pages branch
+   npm run deploy   # builds, publishes, then VERIFIES the live site updated
    ```
+
+   The deploy script ([`deploy.mjs`](deploy.mjs)) polls the live URL after
+   pushing and automatically pushes again if GitHub Pages skipped the build
+   (a known intermittent quirk), so one command always gets the site updated.
 
 4. In the repo: **Settings → Pages → Source = `gh-pages` branch**. Your app goes
    live at `https://<user>.github.io/<repo-name>/`.

@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
 import { CompanyDetails, Invoice, LrRow, formatAmount, invoiceTotal } from './invoice.model';
 import { StoredInvoice } from './data.service';
+import { SIGNATURE_IMG } from './signature';
 
 @Injectable({ providedIn: 'root' })
 export class PdfService {
@@ -135,38 +136,15 @@ export class PdfService {
     return doc;
   }
 
-  private drawSignature(doc: jsPDF, cx: number, baseY: number, scale = 0.6): void {
-    const s = scale;
-    doc.setDrawColor(15, 35, 85);
-    doc.setLineCap('round');
-    doc.setLineJoin('round');
-    const rel = (x0: number, y0: number, segs: number[][], lw: number): void => { doc.setLineWidth(lw * s); doc.lines(segs, x0, y0, [1, 1], 'S', false); };
-
-    const ax = cx - 26 * s, ay = baseY;
-    rel(ax - 4 * s, ay + 1 * s, [[2 * s, -3 * s, 5 * s, -9 * s, 8 * s, -13 * s]], 0.6);
-    rel(ax + 4 * s, ay - 13 * s, [[-1 * s, 5 * s, -2 * s, 9 * s, -3 * s, 13 * s]], 0.7);
-    rel(ax + 4 * s, ay - 13 * s, [[2 * s, 5 * s, 3 * s, 9 * s, 5 * s, 13 * s]], 0.7);
-    rel(ax + 1 * s, ay - 5 * s, [[2 * s, -0.8 * s, 5 * s, 0.4 * s, 7 * s, -0.4 * s]], 0.5);
-
-    const bx = cx - 13 * s, by = baseY - 4 * s;
-    rel(bx, by, [
-      [2 * s, -2 * s, 4 * s, 3 * s, 6 * s, -1 * s],
-      [1.5 * s, 3 * s, 3 * s, -5 * s, 5 * s, 1 * s],
-      [2.5 * s, 2 * s, 5 * s, -4 * s, 7 * s, 0 * s],
-      [2 * s, 2.5 * s, 4.5 * s, -5 * s, 7 * s, -0.5 * s],
-      [2 * s, 2 * s, 5 * s, -4 * s, 8 * s, 0.5 * s],
-      [2 * s, 1.5 * s, 5 * s, -3 * s, 9 * s, 0 * s]
-    ], 0.55);
-
-    doc.setLineWidth(0.7 * s);
-    doc.lines([
-      [-8 * s, 2.5 * s, -30 * s, 4 * s, -46 * s, -0.5 * s],
-      [-3 * s, -2.5 * s, 2 * s, -2 * s, 6 * s, 1.5 * s]
-    ], cx + 30 * s, baseY + 5 * s, [1, 1], 'S', false);
-
-    doc.setLineWidth(0.2);
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineCap('butt');
+  /** Stamp the embedded signature image, centered on cx with its bottom at baseY. */
+  private drawSignature(doc: jsPDF, cx: number, baseY: number, widthMm = 46): void {
+    const ratio = 103 / 560;                 // image height / width
+    const h = widthMm * ratio;
+    try {
+      doc.addImage(SIGNATURE_IMG, 'JPEG', cx - widthMm / 2, baseY - h, widthMm, h);
+    } catch {
+      // never let a signature-image problem break invoice generation
+    }
   }
 
   private drawPage(doc: jsPDF, inv: Invoice, copyLabel: string): void {
@@ -516,7 +494,7 @@ export class PdfService {
     doc.setFontSize(11.5);
     doc.text(`FOR ${c.name}`, sigCx, decY + 1, { align: 'center' });
     if (inv.digitalSignature && inv.signatoryName) {
-      this.drawSignature(doc, sigCx, fBottom - 12, 0.6);
+      this.drawSignature(doc, sigCx, fBottom - 7, 46);
       doc.setFont('times', 'normal'); doc.setFontSize(6);
       doc.setTextColor(70, 70, 70);
       doc.text(`(Digitally signed by ${inv.signatoryName})`, sigCx, fBottom - 4.5, { align: 'center' });
