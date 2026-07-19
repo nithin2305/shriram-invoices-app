@@ -649,8 +649,10 @@ interface ClientStat { name: string; count: number; total: number; }
     .recent-no { font-weight: 600; font-size: 12px; color: var(--muted); min-width: 44px;
       font-variant-numeric: tabular-nums; }
     .recent-info { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
-    .recent-info strong { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .recent-info span { font-size: 12px; color: var(--muted); }
+    .recent-info strong { display: block; font-size: 13px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-info span { display: block; font-size: 12px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .recent-amt { font-weight: 600; font-size: 13px; white-space: nowrap;
       font-variant-numeric: tabular-nums; }
     .rank { width: 20px; height: 20px; border-radius: 6px; background: var(--readonly-bg);
@@ -702,7 +704,8 @@ interface ClientStat { name: string; count: number; total: number; }
     .inv-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--text); }
     .inv-label { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
     .inv-label strong { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .inv-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .inv-meta { display: block; font-size: 12px; color: var(--muted); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; }
     .inv-amt { font-weight: 600; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .inv-actions { display: flex; gap: 6px; }
 
@@ -718,8 +721,10 @@ interface ClientStat { name: string; count: number; total: number; }
       color: var(--muted); font-size: 11px; font-weight: 600; display: flex; align-items: center;
       justify-content: center; flex: none; }
     .client-info { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-    .client-info strong { font-size: 13px; font-weight: 500; }
-    .client-info span { color: var(--muted); font-size: 12px; }
+    .client-info strong { display: block; font-size: 13px; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .client-info span { display: block; color: var(--muted); font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* ---------------- LR TABLE ---------------- */
     .lr-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
@@ -776,10 +781,20 @@ interface ClientStat { name: string; count: number; total: number; }
       .page-wrap { padding: 16px 14px 110px; }
       .layout { grid-template-columns: 1fr; }
       .dash-cols, .report-grid { grid-template-columns: 1fr; }
-      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .stat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .stat-card { padding: 12px 14px; gap: 4px; }
+      .stat-value { font-size: 17px; }
+      .card { padding: 14px; }
       .quick-grid { grid-template-columns: 1fr 1fr; }
       .g2 { grid-template-columns: 1fr; }
       .page-head h1 { font-size: 19px; }
+
+      /* dashboard lists: rigid grid so long names truncate instead of overflowing */
+      .recent-row, .topclient-row { display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
+      .recent-no { min-width: 0; }
+      .recent-amt { font-size: 12.5px; }
+      .topclient-row .recent-amt { grid-column: 3; }
       .actions { width: 100%; }
       .actions .btn { flex: 1; text-align: center; }
       .toasts { bottom: 76px; right: 12px; left: 12px; max-width: none; }
