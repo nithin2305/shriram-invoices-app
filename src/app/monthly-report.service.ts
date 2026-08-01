@@ -106,7 +106,7 @@ export class MonthlyReportService {
       { header: 'Customer',    key: 'cust',     width: 38 },
       { header: 'GST No',      key: 'gst',      width: 20 },
       { header: 'Vehicles',    key: 'veh',      width: 26 },
-      { header: 'L.R. Count',  key: 'lrc',      width: 11 },
+      { header: 'L.R. Nos',    key: 'lrNos',    width: 24 },
       { header: 'Charges',     key: 'chg',      width: 40 },
       { header: 'Amount',      key: 'amt',      width: 14 }
     ];
@@ -123,7 +123,7 @@ export class MonthlyReportService {
         cust: r.customer.name,
         gst: r.customer.gstNo,
         veh,
-        lrc: (r.lrRows ?? []).length,
+        lrNos: (r.lrRows ?? []).map(l => (l.lrNo ?? '').trim()).filter(Boolean).join(', '),
         chg,
         amt: Number(r.total) || 0
       });
